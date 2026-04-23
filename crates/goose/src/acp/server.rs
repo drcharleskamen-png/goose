@@ -28,31 +28,28 @@ use crate::providers::inventory::{
 };
 use crate::session::session_manager::SessionType;
 use crate::session::{EnabledExtensionsState, Session, SessionManager};
-use crate::utils::sanitize_unicode_tags;
 use anyhow::Result;
 use fs_err as fs;
 use futures::future::{BoxFuture, Either};
 use goose_acp_macros::custom_methods;
-use rmcp::model::{
-    AnnotateAble, CallToolResult, RawContent, RawTextContent, ResourceContents, Role,
-};
+use rmcp::model::{CallToolResult, RawContent, ResourceContents, Role};
 use sacp::schema::{
-    AgentCapabilities, Annotations, AuthMethod, AuthMethodAgent, AuthenticateRequest,
-    AuthenticateResponse, BlobResourceContents, CancelNotification, CloseSessionRequest,
-    CloseSessionResponse, ConfigOptionUpdate, Content, ContentBlock, ContentChunk,
-    CurrentModeUpdate, EmbeddedResource, EmbeddedResourceResource, FileSystemCapabilities,
-    ForkSessionRequest, ForkSessionResponse, ImageContent, InitializeRequest, InitializeResponse,
-    ListSessionsRequest, ListSessionsResponse, LoadSessionRequest, LoadSessionResponse,
-    McpCapabilities, McpServer, Meta, ModelId, ModelInfo, NewSessionRequest, NewSessionResponse,
-    PermissionOption, PermissionOptionKind, PromptCapabilities, PromptRequest, PromptResponse,
-    RequestPermissionOutcome, RequestPermissionRequest, ResourceLink, SessionCapabilities,
-    SessionCloseCapabilities, SessionConfigOption, SessionConfigOptionCategory,
-    SessionConfigSelectOption, SessionId, SessionInfo, SessionListCapabilities, SessionMode,
-    SessionModeId, SessionModeState, SessionModelState, SessionNotification, SessionUpdate,
-    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
-    SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse, StopReason,
-    TextContent, TextResourceContents, ToolCall, ToolCallContent, ToolCallId, ToolCallLocation,
-    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind, Usage, UsageUpdate,
+    AgentCapabilities, AuthMethod, AuthMethodAgent, AuthenticateRequest, AuthenticateResponse,
+    BlobResourceContents, CancelNotification, CloseSessionRequest, CloseSessionResponse,
+    ConfigOptionUpdate, Content, ContentBlock, ContentChunk, CurrentModeUpdate, EmbeddedResource,
+    EmbeddedResourceResource, FileSystemCapabilities, ForkSessionRequest, ForkSessionResponse,
+    ImageContent, InitializeRequest, InitializeResponse, ListSessionsRequest, ListSessionsResponse,
+    LoadSessionRequest, LoadSessionResponse, McpCapabilities, McpServer, Meta, ModelId, ModelInfo,
+    NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionKind,
+    PromptCapabilities, PromptRequest, PromptResponse, RequestPermissionOutcome,
+    RequestPermissionRequest, ResourceLink, SessionCapabilities, SessionCloseCapabilities,
+    SessionConfigOption, SessionConfigOptionCategory, SessionConfigSelectOption, SessionId,
+    SessionInfo, SessionListCapabilities, SessionMode, SessionModeId, SessionModeState,
+    SessionModelState, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
+    SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse,
+    SetSessionModelRequest, SetSessionModelResponse, StopReason, TextContent, TextResourceContents,
+    ToolCall, ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
+    ToolCallUpdateFields, ToolKind, Usage, UsageUpdate,
 };
 use sacp::util::MatchDispatchFrom;
 use sacp::{
@@ -86,6 +83,9 @@ const ELEVENLABS_TRANSCRIPTION_MODEL_CONFIG_KEY: &str = "ELEVENLABS_TRANSCRIPTIO
 const OPENAI_TRANSCRIPTION_MODEL: &str = "whisper-1";
 const GROQ_TRANSCRIPTION_MODEL: &str = "whisper-large-v3-turbo";
 const ELEVENLABS_TRANSCRIPTION_MODEL: &str = "scribe_v1";
+const TOOL_CHAIN_META_KEY: &str = "_goose/tool-chain-id";
+const TOOL_CHAIN_SUMMARY_META_KEY: &str = "_goose/tool-chain-summary";
+const ACTIVE_TOOL_CHAIN_SUMMARY: &str = "working";
 
 /// In-memory state for an active ACP session.
 ///
@@ -109,6 +109,10 @@ struct GooseAcpSession {
     agent: AgentHandle,
     internal_session_id: String,
     tool_requests: HashMap<String, crate::conversation::message::ToolRequest>,
+    active_tool_chain_id: Option<String>,
+    active_tool_chain_request_ids: Vec<String>,
+    active_tool_chain_fallback_titles: Vec<String>,
+    tool_chain_ids_by_request: HashMap<String, String>,
     cancel_token: Option<CancellationToken>,
     /// Working directory set while the agent was still loading.
     /// Applied once the agent becomes ready.
@@ -129,6 +133,32 @@ enum AgentSetupProgress {
 
 type AgentSetupSignal = Option<Result<AgentSetupProgress, String>>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ClosedToolChain {
+    chain_id: String,
+    request_ids: Vec<String>,
+    summary: String,
+}
+
+impl ClosedToolChain {
+    fn last_request_id(&self) -> Option<&str> {
+        self.request_ids.last().map(String::as_str)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReplayToolChainMeta {
+    chain_id: String,
+    summary: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ToolChainStepKind {
+    ReviewingFiles,
+    RunningCommands,
+    CheckingResources,
+    UpdatingFiles,
+}
 /// The agent may still be initializing in the background (extension loading,
 /// provider setup).  Callers that need the live agent (e.g. `on_prompt`) await
 /// the handle; callers that only need the session metadata can proceed without it.
@@ -192,6 +222,227 @@ fn extract_timeout_from_meta(meta: &Option<Meta>) -> Option<u64> {
     meta.as_ref()
         .and_then(|m| m.get("timeout"))
         .and_then(|v| v.as_u64())
+}
+
+fn tool_chain_meta(chain_id: &str, chain_summary: &str) -> Meta {
+    let mut meta = Meta::new();
+    meta.insert(
+        TOOL_CHAIN_META_KEY.to_string(),
+        serde_json::Value::String(chain_id.to_string()),
+    );
+    meta.insert(
+        TOOL_CHAIN_SUMMARY_META_KEY.to_string(),
+        serde_json::Value::String(chain_summary.to_string()),
+    );
+    meta
+}
+
+fn start_or_continue_tool_chain(
+    active_tool_chain_id: &mut Option<String>,
+    active_tool_chain_request_ids: &mut Vec<String>,
+    active_tool_chain_fallback_titles: &mut Vec<String>,
+    tool_chain_ids_by_request: &mut HashMap<String, String>,
+    request_id: &str,
+    fallback_title: &str,
+) -> String {
+    let chain_id = active_tool_chain_id
+        .clone()
+        .unwrap_or_else(|| request_id.to_string());
+    *active_tool_chain_id = Some(chain_id.clone());
+    active_tool_chain_request_ids.push(request_id.to_string());
+    active_tool_chain_fallback_titles.push(fallback_title.to_string());
+    tool_chain_ids_by_request.insert(request_id.to_string(), chain_id.clone());
+    chain_id
+}
+
+fn resolve_tool_chain_for_response(
+    active_tool_chain_id: &mut Option<String>,
+    tool_chain_ids_by_request: &HashMap<String, String>,
+    response_id: &str,
+) -> String {
+    if let Some(chain_id) = tool_chain_ids_by_request.get(response_id) {
+        return chain_id.clone();
+    }
+
+    let chain_id = active_tool_chain_id
+        .clone()
+        .unwrap_or_else(|| response_id.to_string());
+    *active_tool_chain_id = Some(chain_id.clone());
+    chain_id
+}
+
+fn reset_tool_chain(
+    active_tool_chain_id: &mut Option<String>,
+    active_tool_chain_request_ids: &mut Vec<String>,
+    active_tool_chain_fallback_titles: &mut Vec<String>,
+    tool_chain_ids_by_request: &mut HashMap<String, String>,
+) {
+    *active_tool_chain_id = None;
+    active_tool_chain_request_ids.clear();
+    active_tool_chain_fallback_titles.clear();
+    tool_chain_ids_by_request.clear();
+}
+
+fn classify_tool_chain_step(step_label: &str) -> ToolChainStepKind {
+    let lower = step_label.to_ascii_lowercase();
+    let (prefix, detail) = lower.split_once(" · ").unwrap_or((lower.as_str(), ""));
+
+    if detail.starts_with("http://")
+        || detail.starts_with("https://")
+        || prefix.contains("fetch")
+        || prefix.contains("http")
+        || prefix.contains("url")
+        || prefix.contains("uri")
+        || prefix.contains("download")
+    {
+        return ToolChainStepKind::CheckingResources;
+    }
+
+    if prefix.contains("edit")
+        || prefix.contains("write")
+        || prefix.contains("create")
+        || prefix.contains("update")
+        || prefix.contains("replace")
+        || prefix.contains("rename")
+        || prefix.contains("move")
+        || prefix.contains("delete")
+    {
+        return ToolChainStepKind::UpdatingFiles;
+    }
+
+    if prefix.contains("shell")
+        || prefix.contains("command")
+        || prefix.contains("bash")
+        || prefix.contains("terminal")
+        || prefix.contains("execute")
+    {
+        return ToolChainStepKind::RunningCommands;
+    }
+
+    ToolChainStepKind::ReviewingFiles
+}
+
+fn summarize_tool_chain(step_labels: &[String]) -> String {
+    if step_labels.is_empty() {
+        return ACTIVE_TOOL_CHAIN_SUMMARY.to_string();
+    }
+
+    let mut reviewing_files = 0;
+    let mut running_commands = 0;
+    let mut checking_resources = 0;
+    let mut updating_files = 0;
+
+    for step_label in step_labels {
+        match classify_tool_chain_step(step_label) {
+            ToolChainStepKind::ReviewingFiles => reviewing_files += 1,
+            ToolChainStepKind::RunningCommands => running_commands += 1,
+            ToolChainStepKind::CheckingResources => checking_resources += 1,
+            ToolChainStepKind::UpdatingFiles => updating_files += 1,
+        }
+    }
+
+    if updating_files > reviewing_files
+        && updating_files >= running_commands
+        && updating_files >= checking_resources
+    {
+        return "updating files".to_string();
+    }
+
+    if checking_resources > reviewing_files && checking_resources >= running_commands {
+        return "checking resources".to_string();
+    }
+
+    if running_commands > reviewing_files {
+        return "running commands".to_string();
+    }
+
+    "reviewing files".to_string()
+}
+
+fn close_tool_chain(
+    active_tool_chain_id: &mut Option<String>,
+    active_tool_chain_request_ids: &mut Vec<String>,
+    active_tool_chain_fallback_titles: &mut Vec<String>,
+    tool_chain_ids_by_request: &mut HashMap<String, String>,
+) -> Option<ClosedToolChain> {
+    let chain_id = active_tool_chain_id.clone()?;
+    let request_ids = active_tool_chain_request_ids.clone();
+    let summary = summarize_tool_chain(active_tool_chain_fallback_titles.as_slice());
+
+    reset_tool_chain(
+        active_tool_chain_id,
+        active_tool_chain_request_ids,
+        active_tool_chain_fallback_titles,
+        tool_chain_ids_by_request,
+    );
+
+    if request_ids.is_empty() {
+        return None;
+    }
+
+    Some(ClosedToolChain {
+        chain_id,
+        request_ids,
+        summary,
+    })
+}
+
+fn emit_tool_chain_summary_update(
+    cx: &ConnectionTo<Client>,
+    session_id: &SessionId,
+    closed_tool_chain: &ClosedToolChain,
+) -> Result<(), sacp::Error> {
+    let Some(last_request_id) = closed_tool_chain.last_request_id() else {
+        return Ok(());
+    };
+
+    cx.send_notification(SessionNotification::new(
+        session_id.clone(),
+        SessionUpdate::ToolCallUpdate(
+            ToolCallUpdate::new(
+                ToolCallId::new(last_request_id.to_string()),
+                ToolCallUpdateFields::new(),
+            )
+            .meta(tool_chain_meta(
+                &closed_tool_chain.chain_id,
+                &closed_tool_chain.summary,
+            )),
+        ),
+    ))?;
+
+    Ok(())
+}
+
+fn flush_tool_chain_summary(
+    cx: &ConnectionTo<Client>,
+    session_id: &SessionId,
+    session: &mut GooseAcpSession,
+) -> Result<(), sacp::Error> {
+    if let Some(closed_tool_chain) = close_tool_chain(
+        &mut session.active_tool_chain_id,
+        &mut session.active_tool_chain_request_ids,
+        &mut session.active_tool_chain_fallback_titles,
+        &mut session.tool_chain_ids_by_request,
+    ) {
+        emit_tool_chain_summary_update(cx, session_id, &closed_tool_chain)?;
+    }
+
+    Ok(())
+}
+
+fn insert_replay_tool_chain_meta(
+    replay_tool_chain_meta_by_request: &mut HashMap<String, ReplayToolChainMeta>,
+    closed_tool_chain: ClosedToolChain,
+) {
+    for request_id in closed_tool_chain.request_ids {
+        replay_tool_chain_meta_by_request.insert(
+            request_id,
+            ReplayToolChainMeta {
+                chain_id: closed_tool_chain.chain_id.clone(),
+                summary: closed_tool_chain.summary.clone(),
+            },
+        );
+    }
 }
 
 fn mcp_server_to_extension_config(mcp_server: McpServer) -> Result<ExtensionConfig, String> {
@@ -400,38 +651,267 @@ fn format_tool_name(tool_name: &str) -> String {
     }
 }
 
-/// Build a short fallback title from the tool name and arguments by extracting
-/// the most useful value (file path, command, query, url, etc.).
-fn summarize_tool_call(tool_name: &str, arguments: Option<&serde_json::Value>) -> String {
-    let base = format_tool_name(tool_name);
+fn canonical_tool_name(tool_name: &str) -> &str {
+    let tool = tool_name
+        .rsplit_once("__")
+        .map_or(tool_name, |(_, suffix)| suffix);
+    tool.rsplit_once('/').map_or(tool, |(_, suffix)| suffix)
+}
 
-    let detail = arguments.and_then(|args| {
-        let obj = args.as_object()?;
-        let keys = [
-            "path", "file", "command", "query", "url", "uri", "name", "pattern", "source",
-        ];
-        for key in &keys {
-            if let Some(v) = obj.get(*key) {
-                let s = match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                };
-                if !s.is_empty() {
-                    let first_line = s.lines().next().unwrap_or(&s);
-                    if first_line.len() > 60 {
-                        return Some(format!("{}…", crate::utils::safe_truncate(first_line, 57)));
-                    }
-                    return Some(first_line.to_string());
+fn title_case(text: &str) -> String {
+    text.split_whitespace()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => {
+                    let mut capitalized = first.to_uppercase().collect::<String>();
+                    capitalized.push_str(chars.as_str());
+                    capitalized
                 }
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn first_argument_string(arguments: Option<&serde_json::Value>, keys: &[&str]) -> Option<String> {
+    let obj = arguments?.as_object()?;
+    for key in keys {
+        if let Some(value) = obj.get(*key) {
+            let text = match value {
+                serde_json::Value::String(text) => text.trim().to_string(),
+                other => other.to_string(),
+            };
+            if !text.is_empty() {
+                return Some(text);
             }
         }
-        None
-    });
-
-    match detail {
-        Some(d) => format!("{base} · {d}"),
-        None => base,
     }
+    None
+}
+
+fn shorten_label(text: &str, max_len: usize) -> String {
+    if text.chars().count() > max_len {
+        format!(
+            "{}…",
+            crate::utils::safe_truncate(text, max_len.saturating_sub(1))
+        )
+    } else {
+        text.to_string()
+    }
+}
+
+fn path_label(value: &str) -> Option<String> {
+    let trimmed = value
+        .trim()
+        .trim_matches(|c| c == '"' || c == '\'')
+        .trim_end_matches(['/', '\\']);
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let candidate = std::path::Path::new(trimmed)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(trimmed);
+
+    Some(shorten_label(candidate, 40))
+}
+
+fn looks_like_file_target(value: &str) -> bool {
+    let trimmed = value.trim().trim_matches(|c| c == '"' || c == '\'');
+    let trimmed = trimmed.trim_end_matches(['/', '\\']);
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let path = std::path::Path::new(trimmed);
+    path.extension().is_some()
+}
+
+fn action_title(action: &str, target: Option<String>, fallback: &str) -> String {
+    match target {
+        Some(target) => format!("{action} {target}"),
+        None => format!("{action} {fallback}"),
+    }
+}
+
+fn shell_command_title(arguments: Option<&serde_json::Value>) -> String {
+    let command = first_argument_string(arguments, &["command", "cmd", "script"]);
+    let first_line = command
+        .as_deref()
+        .and_then(|text| text.lines().next())
+        .map(str::trim)
+        .unwrap_or("");
+
+    if first_line.is_empty() {
+        return "Run command".to_string();
+    }
+
+    let lower = first_line.to_ascii_lowercase();
+    if lower.contains("pwd")
+        || (lower.starts_with("cd ") && (lower.contains("&&") || lower.contains(';')))
+    {
+        return "Check working directory".to_string();
+    }
+
+    let tokens = first_line.split_whitespace().collect::<Vec<_>>();
+    let Some(raw_command) = tokens.first().copied() else {
+        return "Run command".to_string();
+    };
+    let command_name = std::path::Path::new(raw_command)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(raw_command)
+        .to_ascii_lowercase();
+
+    match command_name.as_str() {
+        "cat" | "bat" | "head" | "tail" | "sed" => {
+            let target = tokens.last().and_then(|token| path_label(token));
+            action_title("Read", target, "file")
+        }
+        "tree" | "ls" | "dir" => "List project files".to_string(),
+        "rg" | "grep" | "find" | "findstr" | "fd" => "Search files".to_string(),
+        "curl" | "wget" => "Fetch resource".to_string(),
+        _ => "Run command".to_string(),
+    }
+}
+
+fn summarize_tool_call(tool_name: &str, arguments: Option<&serde_json::Value>) -> String {
+    let canonical = canonical_tool_name(tool_name);
+    let lower = canonical.to_ascii_lowercase();
+    let path_argument = first_argument_string(arguments, &["path", "file", "source", "name"]);
+    let target = path_argument.as_deref().and_then(path_label);
+
+    if matches!(lower.as_str(), "shell" | "bash" | "terminal")
+        || lower.contains("command")
+        || lower.contains("execute")
+    {
+        return shell_command_title(arguments);
+    }
+
+    if lower == "tree" || lower.contains("list") {
+        return "List project files".to_string();
+    }
+
+    if lower == "analyze" {
+        return if path_argument.as_deref().is_some_and(looks_like_file_target) {
+            action_title("Read", target, "file")
+        } else {
+            "Inspect project files".to_string()
+        };
+    }
+
+    if lower.contains("read") || lower == "view" {
+        return action_title("Read", target, "file");
+    }
+
+    if lower.contains("edit")
+        || lower.contains("write")
+        || lower.contains("replace")
+        || lower.contains("insert")
+        || lower.contains("update")
+    {
+        return action_title("Edit", target, "file");
+    }
+
+    if lower.contains("search") || lower.contains("find") || lower.contains("grep") {
+        return "Search files".to_string();
+    }
+
+    if lower.contains("fetch") || lower.contains("download") || lower.contains("request") {
+        return "Fetch resource".to_string();
+    }
+
+    match target {
+        Some(target) => format!("{} {}", title_case(&lower.replace('_', " ")), target),
+        None => title_case(&lower.replace('_', " ")),
+    }
+}
+
+fn build_initial_tool_call(
+    request_id: &str,
+    title: String,
+    raw_input: Option<serde_json::Value>,
+    chain_id: &str,
+    chain_summary: &str,
+) -> ToolCall {
+    let mut tool_call = ToolCall::new(ToolCallId::new(request_id.to_string()), title)
+        .status(ToolCallStatus::Pending);
+    if let Some(args) = raw_input {
+        tool_call = tool_call.raw_input(args);
+    }
+    tool_call.meta(tool_chain_meta(chain_id, chain_summary))
+}
+
+fn build_replay_tool_chain_meta(
+    thread_messages: &[Message],
+) -> HashMap<String, ReplayToolChainMeta> {
+    let mut replay_tool_chain_meta_by_request = HashMap::new();
+    let mut active_tool_chain_id = None;
+    let mut active_tool_chain_request_ids = Vec::<String>::new();
+    let mut active_tool_chain_fallback_titles = Vec::<String>::new();
+    let mut tool_chain_ids_by_request = HashMap::<String, String>::new();
+
+    for message in thread_messages {
+        if !message.metadata.user_visible {
+            continue;
+        }
+
+        for content_item in &message.content {
+            match content_item {
+                MessageContent::Text(_) => {
+                    if let Some(closed_tool_chain) = close_tool_chain(
+                        &mut active_tool_chain_id,
+                        &mut active_tool_chain_request_ids,
+                        &mut active_tool_chain_fallback_titles,
+                        &mut tool_chain_ids_by_request,
+                    ) {
+                        insert_replay_tool_chain_meta(
+                            &mut replay_tool_chain_meta_by_request,
+                            closed_tool_chain,
+                        );
+                    }
+                }
+                MessageContent::ToolRequest(tool_request) => {
+                    let tool_name = match &tool_request.tool_call {
+                        Ok(tool_call) => tool_call.name.to_string(),
+                        Err(_) => "error".to_string(),
+                    };
+                    let args_value = tool_request
+                        .tool_call
+                        .as_ref()
+                        .ok()
+                        .and_then(|tc| tc.arguments.as_ref())
+                        .map(|args| serde_json::Value::Object(args.clone()));
+                    let fallback_title = summarize_tool_call(&tool_name, args_value.as_ref());
+
+                    start_or_continue_tool_chain(
+                        &mut active_tool_chain_id,
+                        &mut active_tool_chain_request_ids,
+                        &mut active_tool_chain_fallback_titles,
+                        &mut tool_chain_ids_by_request,
+                        &tool_request.id,
+                        &fallback_title,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(closed_tool_chain) = close_tool_chain(
+        &mut active_tool_chain_id,
+        &mut active_tool_chain_request_ids,
+        &mut active_tool_chain_fallback_titles,
+        &mut tool_chain_ids_by_request,
+    ) {
+        insert_replay_tool_chain_meta(&mut replay_tool_chain_meta_by_request, closed_tool_chain);
+    }
+
+    replay_tool_chain_meta_by_request
 }
 
 fn builtin_to_extension_config(name: &str) -> ExtensionConfig {
@@ -1158,49 +1638,16 @@ impl GooseAcpAgent {
         self.sessions.lock().await.contains_key(session_id)
     }
 
-    /// Convert ACP prompt content blocks into a user message.
-    fn convert_acp_prompt_to_message(prompt: &[ContentBlock]) -> Message {
-        let mut message = Message::user();
+    fn convert_acp_prompt_to_message(&self, prompt: Vec<ContentBlock>) -> Message {
+        let mut user_message = Message::user();
+
         for block in prompt {
             match block {
                 ContentBlock::Text(text) => {
-                    let annotated = if let Some(ref ann) = text.annotations {
-                        let audience: Vec<Role> = ann
-                            .audience
-                            .as_ref()
-                            .map(|roles| {
-                                roles
-                                    .iter()
-                                    .filter_map(|r| match r {
-                                        sacp::schema::Role::Assistant => Some(Role::Assistant),
-                                        sacp::schema::Role::User => Some(Role::User),
-                                        _ => None,
-                                    })
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        let raw = RawTextContent {
-                            text: sanitize_unicode_tags(&text.text),
-                            meta: None,
-                        };
-                        if audience.is_empty() {
-                            raw.no_annotation()
-                        } else {
-                            raw.no_annotation().with_audience(audience)
-                        }
-                    } else {
-                        // No annotations — regular user text.
-                        let sanitized = sanitize_unicode_tags(&text.text);
-                        RawTextContent {
-                            text: sanitized,
-                            meta: None,
-                        }
-                        .no_annotation()
-                    };
-                    message = message.with_content(MessageContent::Text(annotated));
+                    user_message = user_message.with_text(&text.text);
                 }
                 ContentBlock::Image(image) => {
-                    message = message.with_image(&image.data, &image.mime_type);
+                    user_message = user_message.with_image(&image.data, &image.mime_type);
                 }
                 ContentBlock::Resource(resource) => {
                     if let EmbeddedResourceResource::TextResourceContents(text_resource) =
@@ -1208,18 +1655,19 @@ impl GooseAcpAgent {
                     {
                         let header = format!("--- Resource: {} ---\n", text_resource.uri);
                         let content = format!("{}{}\n---\n", header, text_resource.text);
-                        message = message.with_text(&content);
+                        user_message = user_message.with_text(&content);
                     }
                 }
                 ContentBlock::ResourceLink(link) => {
-                    if let Some(text) = read_resource_link(link.clone()) {
-                        message = message.with_text(text);
+                    if let Some(text) = read_resource_link(link) {
+                        user_message = user_message.with_text(text)
                     }
                 }
                 ContentBlock::Audio(..) | _ => (),
             }
         }
-        message
+
+        user_message
     }
 
     async fn handle_message_content(
@@ -1232,6 +1680,7 @@ impl GooseAcpAgent {
     ) -> Result<(), sacp::Error> {
         match content_item {
             MessageContent::Text(text) => {
+                flush_tool_chain_summary(cx, session_id, session)?;
                 cx.send_notification(SessionNotification::new(
                     session_id.clone(),
                     SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
@@ -1302,110 +1751,25 @@ impl GooseAcpAgent {
             .and_then(|tc| tc.arguments.as_ref())
             .map(|a| serde_json::Value::Object(a.clone()));
         let fallback_title = summarize_tool_call(&tool_name, args_value.as_ref());
+        let chain_id = start_or_continue_tool_chain(
+            &mut session.active_tool_chain_id,
+            &mut session.active_tool_chain_request_ids,
+            &mut session.active_tool_chain_fallback_titles,
+            &mut session.tool_chain_ids_by_request,
+            &tool_request.id,
+            &fallback_title,
+        );
 
-        let mut initial_tool_call = ToolCall::new(
-            ToolCallId::new(tool_request.id.clone()),
-            fallback_title.clone(),
-        )
-        .status(ToolCallStatus::Pending);
-        if let Some(args) = args_value.clone() {
-            initial_tool_call = initial_tool_call.raw_input(args);
-        }
         cx.send_notification(SessionNotification::new(
             session_id.clone(),
-            SessionUpdate::ToolCall(initial_tool_call),
+            SessionUpdate::ToolCall(build_initial_tool_call(
+                &tool_request.id,
+                fallback_title.clone(),
+                args_value.clone(),
+                &chain_id,
+                ACTIVE_TOOL_CHAIN_SUMMARY,
+            )),
         ))?;
-
-        if let Ok(tool_call) = &tool_request.tool_call {
-            let agent = match &session.agent {
-                AgentHandle::Ready(a) => a.clone(),
-                AgentHandle::Loading(_) => return Ok(()),
-            };
-            let sid = session_id.clone();
-            let request_id = tool_request.id.clone();
-            let cx = cx.clone();
-            let name = tool_call.name.to_string();
-            let args_json = tool_call
-                .arguments
-                .as_ref()
-                .map(|a| {
-                    let s = serde_json::to_string(a).unwrap_or_default();
-                    if s.len() > 300 {
-                        format!("{}…", crate::utils::safe_truncate(&s, 300))
-                    } else {
-                        s
-                    }
-                })
-                .unwrap_or_default();
-
-            tokio::spawn(async move {
-                let provider: Arc<dyn Provider> = match agent.provider().await {
-                    Ok(p) => p,
-                    Err(e) => {
-                        warn!("tool call summary: failed to get provider: {e}");
-                        let fields = ToolCallUpdateFields::new().title(fallback_title);
-                        let _ = cx.send_notification(SessionNotification::new(
-                            sid,
-                            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
-                                ToolCallId::new(request_id),
-                                fields,
-                            )),
-                        ));
-                        return;
-                    }
-                };
-
-                // in these case, the title summarization request would
-                // be added to the conversation which we don't want
-                if provider.manages_own_context() {
-                    return;
-                }
-
-                let system = "Summarize this tool call in a short lowercase phrase (3-8 words). \
-                              No punctuation. No quotes. Examples: reading project configuration, \
-                              checking network connectivity, listing files in src directory";
-                let user_text = format!("Tool: {name}\nArguments: {args_json}");
-                let message = Message::user().with_text(&user_text);
-                match provider
-                    .complete_fast(&sid.0, system, &[message], &[])
-                    .await
-                {
-                    Ok((response, _)) => {
-                        let summary: String = response
-                            .content
-                            .iter()
-                            .filter_map(|c: &MessageContent| c.as_text())
-                            .collect::<String>()
-                            .trim()
-                            .to_string();
-                        let title = if summary.is_empty() {
-                            fallback_title
-                        } else {
-                            summary
-                        };
-                        let fields = ToolCallUpdateFields::new().title(title);
-                        let _ = cx.send_notification(SessionNotification::new(
-                            sid,
-                            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
-                                ToolCallId::new(request_id),
-                                fields,
-                            )),
-                        ));
-                    }
-                    Err(e) => {
-                        warn!("tool call summary: fast_complete failed: {e}");
-                        let fields = ToolCallUpdateFields::new().title(fallback_title);
-                        let _ = cx.send_notification(SessionNotification::new(
-                            sid,
-                            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
-                                ToolCallId::new(request_id),
-                                fields,
-                            )),
-                        ));
-                    }
-                }
-            });
-        }
 
         Ok(())
     }
@@ -1422,6 +1786,11 @@ impl GooseAcpAgent {
             Ok(_) => ToolCallStatus::Completed,
             Err(_) => ToolCallStatus::Failed,
         };
+        let chain_id = resolve_tool_chain_for_response(
+            &mut session.active_tool_chain_id,
+            &session.tool_chain_ids_by_request,
+            &tool_response.id,
+        );
 
         let mut fields = ToolCallUpdateFields::new().status(status);
         if !tool_response
@@ -1446,10 +1815,10 @@ impl GooseAcpAgent {
 
         cx.send_notification(SessionNotification::new(
             session_id.clone(),
-            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
-                ToolCallId::new(tool_response.id.clone()),
-                fields,
-            )),
+            SessionUpdate::ToolCallUpdate(
+                ToolCallUpdate::new(ToolCallId::new(tool_response.id.clone()), fields)
+                    .meta(tool_chain_meta(&chain_id, ACTIVE_TOOL_CHAIN_SUMMARY)),
+            ),
         ))?;
 
         Ok(())
@@ -1684,6 +2053,10 @@ impl GooseAcpAgent {
             agent: AgentHandle::Loading(agent_rx),
             internal_session_id: internal_session_id.clone(),
             tool_requests: HashMap::new(),
+            active_tool_chain_id: None,
+            active_tool_chain_request_ids: Vec::new(),
+            active_tool_chain_fallback_titles: Vec::new(),
+            tool_chain_ids_by_request: HashMap::new(),
             cancel_token: None,
             pending_working_dir: None,
         };
@@ -1967,6 +2340,7 @@ impl GooseAcpAgent {
         // matching request. No GooseAcpSession required.
         let mut replay_tool_requests =
             HashMap::<String, crate::conversation::message::ToolRequest>::new();
+        let replay_tool_chain_meta_by_request = build_replay_tool_chain_meta(&thread_messages);
 
         let t_replay = std::time::Instant::now();
         let mut replay_notifications: u32 = 0;
@@ -1978,21 +2352,9 @@ impl GooseAcpAgent {
             for content_item in &message.content {
                 match content_item {
                     MessageContent::Text(text) => {
-                        let mut tc = TextContent::new(text.text.clone());
-                        if let Some(audience) = text.audience() {
-                            tc = tc.annotations(
-                                Annotations::new().audience(
-                                    audience
-                                        .iter()
-                                        .map(|r| match r {
-                                            Role::Assistant => sacp::schema::Role::Assistant,
-                                            Role::User => sacp::schema::Role::User,
-                                        })
-                                        .collect::<Vec<_>>(),
-                                ),
-                            );
-                        }
-                        let chunk = ContentChunk::new(ContentBlock::Text(tc));
+                        let chunk = ContentChunk::new(ContentBlock::Text(TextContent::new(
+                            text.text.clone(),
+                        )));
                         let update = match message.role {
                             Role::User => SessionUpdate::UserMessageChunk(chunk),
                             Role::Assistant => SessionUpdate::AgentMessageChunk(chunk),
@@ -2013,16 +2375,30 @@ impl GooseAcpAgent {
                             Ok(tool_call) => tool_call.name.to_string(),
                             Err(_) => "error".to_string(),
                         };
+                        let args_value = tool_request
+                            .tool_call
+                            .as_ref()
+                            .ok()
+                            .and_then(|tc| tc.arguments.as_ref())
+                            .map(|args| serde_json::Value::Object(args.clone()));
+                        let fallback_title = summarize_tool_call(&tool_name, args_value.as_ref());
+                        let replay_tool_chain_meta = replay_tool_chain_meta_by_request
+                            .get(&tool_request.id)
+                            .cloned()
+                            .unwrap_or(ReplayToolChainMeta {
+                                chain_id: tool_request.id.clone(),
+                                summary: summarize_tool_chain(&[fallback_title.clone()]),
+                            });
 
                         cx.send_notification(SessionNotification::new(
                             args.session_id.clone(),
-                            SessionUpdate::ToolCall(
-                                ToolCall::new(
-                                    ToolCallId::new(tool_request.id.clone()),
-                                    format_tool_name(&tool_name),
-                                )
-                                .status(ToolCallStatus::Pending),
-                            ),
+                            SessionUpdate::ToolCall(build_initial_tool_call(
+                                &tool_request.id,
+                                fallback_title.clone(),
+                                args_value.clone(),
+                                &replay_tool_chain_meta.chain_id,
+                                &replay_tool_chain_meta.summary,
+                            )),
                         ))?;
                         replay_notifications += 1;
                     }
@@ -2035,6 +2411,36 @@ impl GooseAcpAgent {
                             Ok(_) => ToolCallStatus::Completed,
                             Err(_) => ToolCallStatus::Failed,
                         };
+                        let replay_tool_chain_meta = replay_tool_chain_meta_by_request
+                            .get(&tool_response.id)
+                            .cloned()
+                            .or_else(|| {
+                                replay_tool_requests
+                                    .get(&tool_response.id)
+                                    .map(|tool_request| {
+                                        let tool_name = match &tool_request.tool_call {
+                                            Ok(tool_call) => tool_call.name.to_string(),
+                                            Err(_) => "error".to_string(),
+                                        };
+                                        let args_value = tool_request
+                                            .tool_call
+                                            .as_ref()
+                                            .ok()
+                                            .and_then(|tc| tc.arguments.as_ref())
+                                            .map(|args| serde_json::Value::Object(args.clone()));
+                                        let fallback_title =
+                                            summarize_tool_call(&tool_name, args_value.as_ref());
+
+                                        ReplayToolChainMeta {
+                                            chain_id: tool_response.id.clone(),
+                                            summary: summarize_tool_chain(&[fallback_title]),
+                                        }
+                                    })
+                            })
+                            .unwrap_or(ReplayToolChainMeta {
+                                chain_id: tool_response.id.clone(),
+                                summary: "reviewing files".to_string(),
+                            });
 
                         let mut fields = ToolCallUpdateFields::new().status(status);
                         if !tool_response
@@ -2062,10 +2468,16 @@ impl GooseAcpAgent {
 
                         cx.send_notification(SessionNotification::new(
                             args.session_id.clone(),
-                            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
-                                ToolCallId::new(tool_response.id.clone()),
-                                fields,
-                            )),
+                            SessionUpdate::ToolCallUpdate(
+                                ToolCallUpdate::new(
+                                    ToolCallId::new(tool_response.id.clone()),
+                                    fields,
+                                )
+                                .meta(tool_chain_meta(
+                                    &replay_tool_chain_meta.chain_id,
+                                    &replay_tool_chain_meta.summary,
+                                )),
+                            ),
                         ))?;
                         replay_notifications += 1;
                     }
@@ -2118,6 +2530,10 @@ impl GooseAcpAgent {
             agent: AgentHandle::Loading(agent_rx),
             internal_session_id: internal_session_id.clone(),
             tool_requests: replay_tool_requests,
+            active_tool_chain_id: None,
+            active_tool_chain_request_ids: Vec::new(),
+            active_tool_chain_fallback_titles: Vec::new(),
+            tool_chain_ids_by_request: HashMap::new(),
             cancel_token: None,
             pending_working_dir: None,
         };
@@ -2197,10 +2613,22 @@ impl GooseAcpAgent {
             .await?;
         debug!(target: "perf", sid = %sid, ms = t_agent.elapsed().as_millis() as u64, "perf: prompt get_session_agent (waits for agent setup)");
 
-        let user_message = Self::convert_acp_prompt_to_message(&args.prompt);
+        {
+            let mut sessions = self.sessions.lock().await;
+            let session = sessions.get_mut(&thread_id).ok_or_else(|| {
+                sacp::Error::invalid_params().data(format!("Session not found: {}", thread_id))
+            })?;
+            reset_tool_chain(
+                &mut session.active_tool_chain_id,
+                &mut session.active_tool_chain_request_ids,
+                &mut session.active_tool_chain_fallback_titles,
+                &mut session.tool_chain_ids_by_request,
+            );
+        }
+
+        let user_message = self.convert_acp_prompt_to_message(args.prompt);
 
         let t_persist = std::time::Instant::now();
-        // Persist user message (may contain assistant-only annotated blocks)
         self.thread_manager
             .append_message(&thread_id, Some(&internal_session_id), &user_message)
             .await
@@ -2286,6 +2714,7 @@ impl GooseAcpAgent {
             let mut sessions = self.sessions.lock().await;
             if let Some(session) = sessions.get_mut(&thread_id) {
                 session.cancel_token = None;
+                flush_tool_chain_summary(cx, &args.session_id, session)?;
             }
         }
 
@@ -2739,6 +3168,10 @@ impl GooseAcpAgent {
             agent: AgentHandle::Loading(agent_rx),
             internal_session_id: internal_session_id.clone(),
             tool_requests: HashMap::new(),
+            active_tool_chain_id: None,
+            active_tool_chain_request_ids: Vec::new(),
+            active_tool_chain_fallback_titles: Vec::new(),
+            tool_chain_ids_by_request: HashMap::new(),
             cancel_token: None,
             pending_working_dir: None,
         };
@@ -4243,10 +4676,7 @@ print(\"hello, world\")
 
     #[test]
     fn test_summarize_tool_call_no_args() {
-        assert_eq!(
-            summarize_tool_call("developer__shell", None),
-            "developer: shell"
-        );
+        assert_eq!(summarize_tool_call("developer__shell", None), "Run command");
     }
 
     #[test]
@@ -4254,7 +4684,7 @@ print(\"hello, world\")
         let args = serde_json::json!({"path": "/src/main.rs", "content": "fn main() {}"});
         assert_eq!(
             summarize_tool_call("developer__edit", Some(&args)),
-            "developer: edit · /src/main.rs"
+            "Edit main.rs"
         );
     }
 
@@ -4263,7 +4693,49 @@ print(\"hello, world\")
         let args = serde_json::json!({"command": "cargo build"});
         assert_eq!(
             summarize_tool_call("developer__shell", Some(&args)),
-            "developer: shell · cargo build"
+            "Run command"
+        );
+    }
+
+    #[test]
+    fn test_summarize_tool_call_with_cmd() {
+        let args = serde_json::json!({"cmd": "cargo test -p goose"});
+        assert_eq!(
+            summarize_tool_call("developer__shell", Some(&args)),
+            "Run command"
+        );
+    }
+
+    #[test]
+    fn test_summarize_tool_call_reads_files_from_shell_commands() {
+        let args = serde_json::json!({"command": "cat /tmp/package.json"});
+        assert_eq!(
+            summarize_tool_call("developer__shell", Some(&args)),
+            "Read package.json"
+        );
+    }
+
+    #[test]
+    fn test_summarize_tool_call_reads_files_from_analyze() {
+        let args = serde_json::json!({"path": "/src/main.js"});
+        assert_eq!(summarize_tool_call("analyze", Some(&args)), "Read main.js");
+    }
+
+    #[test]
+    fn test_summarize_tool_call_lists_project_files() {
+        let args = serde_json::json!({"path": "/tmp/project"});
+        assert_eq!(
+            summarize_tool_call("tree", Some(&args)),
+            "List project files"
+        );
+    }
+
+    #[test]
+    fn test_summarize_tool_call_checks_working_directory() {
+        let args = serde_json::json!({"command": "pwd && ls -la"});
+        assert_eq!(
+            summarize_tool_call("developer__shell", Some(&args)),
+            "Check working directory"
         );
     }
 
@@ -4273,7 +4745,23 @@ print(\"hello, world\")
         let args = serde_json::json!({"path": long_path});
         let result = summarize_tool_call("developer__read_file", Some(&args));
         assert!(result.ends_with('…'));
-        assert!(result.len() < 90);
+        assert!(result.starts_with("Read "));
+        assert!(result.len() < 50);
+    }
+
+    #[test]
+    fn test_build_initial_tool_call_preserves_raw_input() {
+        let raw_input = serde_json::json!({"command": "cargo test -p goose"});
+        let tool_call = build_initial_tool_call(
+            "req_1",
+            "Run command".to_string(),
+            Some(raw_input.clone()),
+            "chain_1",
+            "running commands",
+        );
+
+        assert_eq!(tool_call.raw_input, Some(raw_input));
+        assert_eq!(tool_call.title, "Run command");
     }
 
     #[test_case(
@@ -4498,6 +4986,215 @@ print(\"hello, world\")
     ) -> Option<Vec<(PathBuf, Option<u32>)>> {
         extract_locations_from_meta(&response)
             .map(|locs| locs.into_iter().map(|loc| (loc.path, loc.line)).collect())
+    }
+
+    #[test]
+    fn test_start_or_continue_tool_chain_reuses_first_request_id() {
+        let mut active_tool_chain_id = None;
+        let mut active_tool_chain_request_ids = Vec::new();
+        let mut active_tool_chain_fallback_titles = Vec::new();
+        let mut tool_chain_ids_by_request = HashMap::new();
+
+        let first_chain_id = start_or_continue_tool_chain(
+            &mut active_tool_chain_id,
+            &mut active_tool_chain_request_ids,
+            &mut active_tool_chain_fallback_titles,
+            &mut tool_chain_ids_by_request,
+            "req_1",
+            "Read main.rs",
+        );
+        let second_chain_id = start_or_continue_tool_chain(
+            &mut active_tool_chain_id,
+            &mut active_tool_chain_request_ids,
+            &mut active_tool_chain_fallback_titles,
+            &mut tool_chain_ids_by_request,
+            "req_2",
+            "Read Cargo.toml",
+        );
+
+        assert_eq!(first_chain_id, "req_1");
+        assert_eq!(second_chain_id, "req_1");
+        assert_eq!(active_tool_chain_id.as_deref(), Some("req_1"));
+        assert_eq!(active_tool_chain_request_ids, vec!["req_1", "req_2"]);
+        assert_eq!(
+            active_tool_chain_fallback_titles,
+            vec!["Read main.rs", "Read Cargo.toml"]
+        );
+        assert_eq!(
+            tool_chain_ids_by_request.get("req_2").map(String::as_str),
+            Some("req_1")
+        );
+    }
+
+    #[test]
+    fn test_summarize_tool_chain_defaults_to_reviewing_files_for_mixed_work() {
+        let summary = summarize_tool_chain(&[
+            "Read main.rs".to_string(),
+            "Run command".to_string(),
+            "Read Cargo.toml".to_string(),
+        ]);
+
+        assert_eq!(summary, "reviewing files");
+    }
+
+    #[test]
+    fn test_summarize_tool_chain_returns_running_commands_for_command_only_chain() {
+        let summary = summarize_tool_chain(&["Run command".to_string(), "Run command".to_string()]);
+
+        assert_eq!(summary, "running commands");
+    }
+
+    #[test]
+    fn test_summarize_tool_chain_returns_updating_files_for_edit_heavy_chain() {
+        let summary = summarize_tool_chain(&[
+            "Edit main.rs".to_string(),
+            "Edit lib.rs".to_string(),
+            "Read lib.rs".to_string(),
+        ]);
+
+        assert_eq!(summary, "updating files");
+    }
+
+    #[test]
+    fn test_resolve_tool_chain_for_response_prefers_request_mapping() {
+        let mut active_tool_chain_id = Some("req_1".to_string());
+        let tool_chain_ids_by_request = HashMap::from([("req_2".to_string(), "req_1".to_string())]);
+
+        let chain_id = resolve_tool_chain_for_response(
+            &mut active_tool_chain_id,
+            &tool_chain_ids_by_request,
+            "req_2",
+        );
+
+        assert_eq!(chain_id, "req_1");
+        assert_eq!(active_tool_chain_id.as_deref(), Some("req_1"));
+    }
+
+    #[test]
+    fn test_resolve_tool_chain_for_response_falls_back_to_active_chain() {
+        let mut active_tool_chain_id = Some("req_1".to_string());
+        let tool_chain_ids_by_request = HashMap::new();
+
+        let chain_id = resolve_tool_chain_for_response(
+            &mut active_tool_chain_id,
+            &tool_chain_ids_by_request,
+            "req_9",
+        );
+
+        assert_eq!(chain_id, "req_1");
+        assert_eq!(active_tool_chain_id.as_deref(), Some("req_1"));
+    }
+
+    #[test]
+    fn test_resolve_tool_chain_for_response_starts_new_chain_when_none_active() {
+        let mut active_tool_chain_id = None;
+        let tool_chain_ids_by_request = HashMap::new();
+
+        let chain_id = resolve_tool_chain_for_response(
+            &mut active_tool_chain_id,
+            &tool_chain_ids_by_request,
+            "req_9",
+        );
+
+        assert_eq!(chain_id, "req_9");
+        assert_eq!(active_tool_chain_id.as_deref(), Some("req_9"));
+    }
+
+    #[test]
+    fn test_reset_tool_chain_clears_state() {
+        let mut active_tool_chain_id = Some("req_1".to_string());
+        let mut active_tool_chain_request_ids = vec!["req_1".to_string()];
+        let mut active_tool_chain_fallback_titles = vec!["Read main.rs".to_string()];
+        let mut tool_chain_ids_by_request =
+            HashMap::from([("req_1".to_string(), "req_1".to_string())]);
+
+        reset_tool_chain(
+            &mut active_tool_chain_id,
+            &mut active_tool_chain_request_ids,
+            &mut active_tool_chain_fallback_titles,
+            &mut tool_chain_ids_by_request,
+        );
+
+        assert!(active_tool_chain_id.is_none());
+        assert!(active_tool_chain_request_ids.is_empty());
+        assert!(active_tool_chain_fallback_titles.is_empty());
+        assert!(tool_chain_ids_by_request.is_empty());
+    }
+
+    #[test]
+    fn test_close_tool_chain_returns_summary_and_clears_state() {
+        let mut active_tool_chain_id = None;
+        let mut active_tool_chain_request_ids = Vec::new();
+        let mut active_tool_chain_fallback_titles = Vec::new();
+        let mut tool_chain_ids_by_request = HashMap::new();
+
+        start_or_continue_tool_chain(
+            &mut active_tool_chain_id,
+            &mut active_tool_chain_request_ids,
+            &mut active_tool_chain_fallback_titles,
+            &mut tool_chain_ids_by_request,
+            "req_1",
+            "Read main.rs",
+        );
+        start_or_continue_tool_chain(
+            &mut active_tool_chain_id,
+            &mut active_tool_chain_request_ids,
+            &mut active_tool_chain_fallback_titles,
+            &mut tool_chain_ids_by_request,
+            "req_2",
+            "Run command",
+        );
+
+        let closed_tool_chain = close_tool_chain(
+            &mut active_tool_chain_id,
+            &mut active_tool_chain_request_ids,
+            &mut active_tool_chain_fallback_titles,
+            &mut tool_chain_ids_by_request,
+        )
+        .expect("tool chain should close");
+
+        assert_eq!(closed_tool_chain.chain_id, "req_1");
+        assert_eq!(closed_tool_chain.last_request_id(), Some("req_2"));
+        assert_eq!(closed_tool_chain.summary, "reviewing files");
+        assert!(active_tool_chain_id.is_none());
+        assert!(active_tool_chain_request_ids.is_empty());
+        assert!(active_tool_chain_fallback_titles.is_empty());
+        assert!(tool_chain_ids_by_request.is_empty());
+    }
+
+    #[test]
+    fn test_build_replay_tool_chain_meta_uses_final_summary_for_entire_chain() {
+        let shell_args_1 = serde_json::json!({"command": "cargo fmt"});
+        let shell_args_2 = serde_json::json!({"command": "cargo test"});
+        let message = Message::assistant()
+            .with_tool_request(
+                "req_1",
+                Ok(CallToolRequestParams::new("developer__shell")
+                    .with_arguments(shell_args_1.as_object().unwrap().clone())),
+            )
+            .with_tool_request(
+                "req_2",
+                Ok(CallToolRequestParams::new("developer__shell")
+                    .with_arguments(shell_args_2.as_object().unwrap().clone())),
+            )
+            .with_text("done");
+
+        let replay_tool_chain_meta = build_replay_tool_chain_meta(&[message]);
+
+        assert_eq!(
+            replay_tool_chain_meta.get("req_1"),
+            Some(&ReplayToolChainMeta {
+                chain_id: "req_1".to_string(),
+                summary: "running commands".to_string(),
+            })
+        );
+        assert_eq!(
+            replay_tool_chain_meta.get("req_2"),
+            Some(&ReplayToolChainMeta {
+                chain_id: "req_1".to_string(),
+                summary: "running commands".to_string(),
+            })
+        );
     }
 
     fn make_session_with_usage(

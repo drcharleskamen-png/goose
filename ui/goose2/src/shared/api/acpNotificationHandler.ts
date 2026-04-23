@@ -9,17 +9,24 @@ import {
   getBufferedMessage,
   findLatestUnpairedToolRequest,
 } from "@/features/chat/hooks/replayBuffer";
-import type {
-  TextContent,
-  ToolRequestContent,
-  ToolResponseContent,
-} from "@/shared/types/messages";
 import type { AcpNotificationHandler } from "./acpConnection";
 import {
   getLocalSessionId,
   subscribeToSessionRegistration,
 } from "./acpSessionTracker";
 import { perfLog } from "@/shared/lib/perfLog";
+import { findToolRequestById, updateToolCallBlocks } from "./toolCallChainMeta";
+import {
+  findMessageInBuffer,
+  findMessageWithToolCall,
+  normalizeToolCallPayload,
+} from "./acpNotificationMessageHelpers";
+import {
+  buildToolCallPatch,
+  buildToolRequestBlock,
+  buildToolResponseBlock,
+  hasToolCallPatch,
+} from "./toolCallBlockBuilders";
 
 // Pre-set message ID for the next live stream per goose session
 const presetMessageIds = new Map<string, string>();
@@ -197,32 +204,32 @@ function handleReplay(sessionId: string, update: SessionUpdate): void {
     }
 
     case "user_message_chunk": {
-      if (update.content.type !== "text" || !("text" in update.content)) break;
       const messageId = update.messageId ?? crypto.randomUUID();
       const buffer = ensureReplayBuffer(sessionId);
       const existing = getBufferedMessage(sessionId, messageId);
-      // biome-ignore lint/suspicious/noExplicitAny: wire format has annotations but SDK types don't
-      const rawAnn = (update.content as any).annotations;
-      const ann: TextContent["annotations"] | undefined =
-        typeof rawAnn === "object" && rawAnn !== null ? rawAnn : undefined;
-      // Drop assistant-only blocks so they never enter chat state.
       if (
-        ann?.audience &&
-        ann.audience.length > 0 &&
-        !ann.audience.includes("user")
-      )
-        break;
-      const textBlock = makeTextBlock(update.content.text, ann);
-      if (!existing) {
+        !existing &&
+        update.content.type === "text" &&
+        "text" in update.content
+      ) {
         buffer.push({
           id: messageId,
           role: "user",
           created: Date.now(),
-          content: [textBlock],
+          content: [{ type: "text", text: update.content.text }],
           metadata: { userVisible: true, agentVisible: true },
         });
-      } else {
-        existing.content.push(textBlock);
+      } else if (
+        existing &&
+        update.content.type === "text" &&
+        "text" in update.content
+      ) {
+        const last = existing.content[existing.content.length - 1];
+        if (last?.type === "text") {
+          (last as { type: "text"; text: string }).text += update.content.text;
+        } else {
+          existing.content.push({ type: "text", text: update.content.text });
+        }
       }
       break;
     }
@@ -230,14 +237,8 @@ function handleReplay(sessionId: string, update: SessionUpdate): void {
     case "tool_call": {
       const msg = findMessageInBuffer(sessionId, update.toolCallId);
       if (msg) {
-        msg.content.push({
-          type: "toolRequest",
-          id: update.toolCallId,
-          name: update.title,
-          arguments: {},
-          status: "executing",
-          startedAt: Date.now(),
-        });
+        const payload = normalizeToolCallPayload(update);
+        msg.content.push(buildToolRequestBlock(update, payload));
       }
       break;
     }
@@ -245,35 +246,29 @@ function handleReplay(sessionId: string, update: SessionUpdate): void {
     case "tool_call_update": {
       const msg = findMessageWithToolCall(sessionId, update.toolCallId);
       if (msg) {
-        if (update.title) {
-          const tc = msg.content.find(
-            (c) => c.type === "toolRequest" && c.id === update.toolCallId,
+        const payload = normalizeToolCallPayload(update);
+
+        if (hasToolCallPatch(update, payload)) {
+          msg.content = updateToolCallBlocks(
+            msg.content,
+            update.toolCallId,
+            buildToolCallPatch(update, payload),
           );
-          if (tc && tc.type === "toolRequest") {
-            (tc as ToolRequestContent).name = update.title;
-          }
         }
+
         if (update.status === "completed" || update.status === "failed") {
-          const tc = msg.content.find(
-            (c) => c.type === "toolRequest" && c.id === update.toolCallId,
+          msg.content = updateToolCallBlocks(
+            msg.content,
+            update.toolCallId,
+            buildToolCallPatch(update, payload, true),
           );
-          if (tc && tc.type === "toolRequest") {
-            const idx = msg.content.indexOf(tc);
-            if (idx >= 0) {
-              msg.content[idx] = {
-                ...tc,
-                status: "completed",
-              } as ToolRequestContent;
-            }
-          }
-          const resultText = extractToolResultText(update);
-          msg.content.push({
-            type: "toolResponse",
-            id: update.toolCallId,
-            name: (tc as ToolRequestContent)?.name ?? "",
-            result: resultText,
-            isError: update.status === "failed",
-          });
+          const completedToolRequest = findToolRequestById(
+            msg.content,
+            update.toolCallId,
+          );
+          msg.content.push(
+            buildToolResponseBlock(update, payload, completedToolRequest),
+          );
         }
       }
       break;
@@ -333,17 +328,12 @@ function handleLive(
     case "tool_call": {
       const messageId = findStreamingMessageId(sessionId);
       if (!messageId) break;
-
-      const toolRequest: ToolRequestContent = {
-        type: "toolRequest",
-        id: update.toolCallId,
-        name: update.title,
-        arguments: {},
-        status: "executing",
-        startedAt: Date.now(),
-      };
+      const payload = normalizeToolCallPayload(update);
       store.setStreamingMessageId(sessionId, messageId);
-      store.appendToStreamingMessage(sessionId, toolRequest);
+      store.appendToStreamingMessage(
+        sessionId,
+        buildToolRequestBlock(update, payload),
+      );
       break;
     }
 
@@ -351,13 +341,15 @@ function handleLive(
       const messageId = findStreamingMessageId(sessionId);
       if (!messageId) break;
 
-      if (update.title) {
+      const payload = normalizeToolCallPayload(update);
+
+      if (hasToolCallPatch(update, payload)) {
         store.updateMessage(sessionId, messageId, (msg) => ({
           ...msg,
-          content: msg.content.map((c) =>
-            c.type === "toolRequest" && c.id === update.toolCallId
-              ? { ...c, name: update.title ?? "" }
-              : c,
+          content: updateToolCallBlocks(
+            msg.content,
+            update.toolCallId,
+            buildToolCallPatch(update, payload),
           ),
         }));
       }
@@ -367,28 +359,24 @@ function handleLive(
           (m) => m.id === messageId,
         );
         const toolRequest = streamingMessage
-          ? findLatestUnpairedToolRequest(streamingMessage.content)
+          ? (findToolRequestById(streamingMessage.content, update.toolCallId) ??
+            findLatestUnpairedToolRequest(streamingMessage.content))
           : null;
 
         store.updateMessage(sessionId, messageId, (msg) => ({
           ...msg,
-          content: msg.content.map((block) =>
-            block.type === "toolRequest" && block.id === update.toolCallId
-              ? { ...block, status: "completed" }
-              : block,
+          content: updateToolCallBlocks(
+            msg.content,
+            update.toolCallId,
+            buildToolCallPatch(update, payload, true),
           ),
         }));
 
-        const resultText = extractToolResultText(update);
-        const toolResponse: ToolResponseContent = {
-          type: "toolResponse",
-          id: update.toolCallId,
-          name: toolRequest?.name ?? "",
-          result: resultText,
-          isError: update.status === "failed",
-        };
         store.setStreamingMessageId(sessionId, messageId);
-        store.appendToStreamingMessage(sessionId, toolResponse);
+        store.appendToStreamingMessage(
+          sessionId,
+          buildToolResponseBlock(update, payload, toolRequest),
+        );
       }
       break;
     }
@@ -480,62 +468,9 @@ function handleShared(sessionId: string, update: SessionUpdate): void {
   }
 }
 
-// Helpers
-
 function findStreamingMessageId(sessionId: string): string | null {
   return useChatStore.getState().getSessionRuntime(sessionId)
     .streamingMessageId;
-}
-
-function makeTextBlock(
-  text: string,
-  ann?: TextContent["annotations"],
-): TextContent {
-  return { type: "text", text, ...(ann ? { annotations: ann } : {}) };
-}
-
-function findMessageInBuffer(
-  sessionId: string,
-  _toolCallId: string,
-): ReturnType<typeof getBufferedMessage> {
-  const buffer = ensureReplayBuffer(sessionId);
-  return buffer[buffer.length - 1];
-}
-
-function findMessageWithToolCall(
-  sessionId: string,
-  toolCallId: string,
-): ReturnType<typeof getBufferedMessage> {
-  const buffer = ensureReplayBuffer(sessionId);
-  for (let i = buffer.length - 1; i >= 0; i--) {
-    const msg = buffer[i];
-    if (
-      msg.content.some((c) => c.type === "toolRequest" && c.id === toolCallId)
-    ) {
-      return msg;
-    }
-  }
-  return buffer[buffer.length - 1];
-}
-
-function extractToolResultText(update: {
-  // biome-ignore lint/suspicious/noExplicitAny: ACP SDK ToolCallContent type is complex
-  content?: Array<any> | null;
-  rawOutput?: unknown;
-}): string {
-  if (update.content && update.content.length > 0) {
-    for (const item of update.content) {
-      if (item.type === "content" && item.content?.type === "text") {
-        return item.content.text;
-      }
-    }
-  }
-  if (update.rawOutput !== undefined && update.rawOutput !== null) {
-    return typeof update.rawOutput === "string"
-      ? update.rawOutput
-      : JSON.stringify(update.rawOutput);
-  }
-  return "";
 }
 
 export function clearMessageTracking(): void {

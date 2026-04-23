@@ -1,3 +1,9 @@
+import type {
+  ToolCallContent as AcpToolCallContent,
+  ToolCallLocation as AcpToolCallLocation,
+  ToolKind as AcpToolKind,
+} from "@agentclientprotocol/sdk";
+
 export type ChatAttachmentKind = "image" | "file" | "directory";
 
 export interface ChatImageAttachmentDraft {
@@ -63,6 +69,10 @@ export type ToolCallStatus =
   | "error"
   | "stopped";
 
+export type ToolCallKind = AcpToolKind;
+export type ToolCallLocation = AcpToolCallLocation;
+export type ToolCallStructuredContent = AcpToolCallContent;
+
 export type MessageCompletionStatus =
   | "inProgress"
   | "completed"
@@ -72,8 +82,14 @@ export type MessageCompletionStatus =
 export interface ToolRequestContent {
   type: "toolRequest";
   id: string;
+  chainId?: string;
+  chainSummary?: string;
   name: string;
   arguments: Record<string, unknown>;
+  kind?: ToolCallKind;
+  locations?: ToolCallLocation[];
+  content?: ToolCallStructuredContent[];
+  rawOutput?: unknown;
   status: ToolCallStatus;
   /** Epoch ms when the tool call started executing (set on event receipt). */
   startedAt?: number;
@@ -83,8 +99,14 @@ export interface ToolRequestContent {
 export interface ToolResponseContent {
   type: "toolResponse";
   id: string;
+  chainId?: string;
+  chainSummary?: string;
   name: string;
   result: string;
+  kind?: ToolCallKind;
+  locations?: ToolCallLocation[];
+  content?: ToolCallStructuredContent[];
+  rawOutput?: unknown;
   isError: boolean;
   annotations?: ContentAnnotations;
 }
