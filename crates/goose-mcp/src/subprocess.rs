@@ -56,8 +56,13 @@ fn resolve_login_shell_path() -> Option<String> {
             }
         });
 
+    // NOTE: We intentionally do NOT pass `-i` (interactive) here. An interactive
+    // shell can call tcsetpgrp() to claim the foreground process group of the
+    // controlling terminal, which steals it from the parent goose process and
+    // causes SIGTTOU when goose later tries to enter raw mode.
+    // `-l` (login) is sufficient to source profile files where PATH is set.
     std::process::Command::new(&shell)
-        .args(["-l", "-i", "-c", "echo $PATH"])
+        .args(["-l", "-c", "echo $PATH"])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()

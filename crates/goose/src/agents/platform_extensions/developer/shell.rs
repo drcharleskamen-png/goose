@@ -168,9 +168,15 @@ pub struct ShellOutput {
 fn resolve_login_shell_path() -> Option<String> {
     let shell = unix_shell();
 
+    // NOTE: We intentionally do NOT pass `-i` (interactive) here. An interactive
+    // shell can call tcsetpgrp() to claim the foreground process group of the
+    // controlling terminal, which steals it from the parent goose process. When
+    // goose later tries to enter raw mode (via rustyline), it is now in a
+    // background process group and receives SIGTTOU, causing it to suspend.
+    // `-l` (login) is sufficient to source profile files where PATH is set.
     let mut child = if is_flatpak() {
         flatpak_spawn_process()
-            .args([&shell, "-l", "-i", "-c", "echo $PATH"])
+            .args([&shell, "-l", "-c", "echo $PATH"])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -178,7 +184,7 @@ fn resolve_login_shell_path() -> Option<String> {
             .ok()?
     } else {
         std::process::Command::new(&shell)
-            .args(["-l", "-i", "-c", "echo $PATH"])
+            .args(["-l", "-c", "echo $PATH"])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
