@@ -4,9 +4,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use futures::stream::BoxStream;
-use futures::{stream, FutureExt, Stream, StreamExt, TryStreamExt};
+use futures::{FutureExt, Stream, StreamExt, TryStreamExt, stream};
 use tracing_futures::Instrument;
 use uuid::Uuid;
 
@@ -14,33 +14,33 @@ use super::container::Container;
 use super::final_output_tool::FinalOutputTool;
 use super::platform_tools;
 use super::tool_confirmation_router::ToolConfirmationRouter;
-use super::tool_execution::{ToolCallResult, CHAT_MODE_TOOL_SKIPPED_RESPONSE, DECLINED_RESPONSE};
+use super::tool_execution::{CHAT_MODE_TOOL_SKIPPED_RESPONSE, DECLINED_RESPONSE, ToolCallResult};
 use crate::action_required_manager::ActionRequiredManager;
 use crate::agents::extension::{ExtensionConfig, ExtensionResult, ToolInfo};
 use crate::agents::extension_manager::{
-    get_parameter_names, ExtensionManager, ExtensionManagerCapabilities,
+    ExtensionManager, ExtensionManagerCapabilities, get_parameter_names,
 };
 use crate::agents::final_output_tool::{FINAL_OUTPUT_CONTINUATION_MESSAGE, FINAL_OUTPUT_TOOL_NAME};
-use crate::agents::platform_extensions::summon::discover_filesystem_sources;
 use crate::agents::platform_extensions::MANAGE_EXTENSIONS_TOOL_NAME_COMPLETE;
+use crate::agents::platform_extensions::summon::discover_filesystem_sources;
 use crate::agents::platform_tools::PLATFORM_MANAGE_SCHEDULE_TOOL_NAME;
 use crate::agents::prompt_manager::PromptManager;
 use crate::agents::retry::{RetryManager, RetryResult};
 use crate::agents::types::{FrontendTool, SessionConfig, SharedProvider, ToolResultReceiver};
 use crate::config::permission::PermissionManager;
-use crate::config::{get_enabled_extensions, Config, GooseMode};
+use crate::config::{Config, GooseMode, get_enabled_extensions};
 use crate::context_mgmt::{
-    check_if_compaction_needed, compact_messages, DEFAULT_COMPACTION_THRESHOLD,
+    DEFAULT_COMPACTION_THRESHOLD, check_if_compaction_needed, compact_messages,
 };
 use crate::conversation::message::{
     ActionRequiredData, Message, MessageContent, ProviderMetadata, SystemNotificationType,
     ToolRequest,
 };
-use crate::conversation::{debug_conversation_fix, fix_conversation, Conversation};
+use crate::conversation::{Conversation, debug_conversation_fix, fix_conversation};
 use crate::mcp_utils::ToolResult;
+use crate::permission::PermissionConfirmation;
 use crate::permission::permission_inspector::PermissionInspector;
 use crate::permission::permission_judge::PermissionCheckResult;
-use crate::permission::PermissionConfirmation;
 use crate::providers::base::{PermissionRouting, Provider};
 use crate::providers::errors::ProviderError;
 use crate::recipe::{Author, Recipe, Response, Settings};
@@ -59,7 +59,7 @@ use rmcp::model::{
     ServerNotification, Tool,
 };
 use serde_json::Value;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument, warn};
 
@@ -153,6 +153,7 @@ pub struct Agent {
 
     pub(super) retry_manager: RetryManager,
     pub(super) tool_inspection_manager: ToolInspectionManager,
+    pub(super) hook_manager: crate::hooks::HookManager,
     container: Mutex<Option<Container>>,
 }
 
@@ -251,6 +252,7 @@ impl Agent {
                 permission_manager,
                 provider.clone(),
             ),
+            hook_manager: crate::hooks::HookManager::from_config(),
             container: Mutex::new(None),
         }
     }
@@ -279,6 +281,27 @@ impl Agent {
         tool_inspection_manager.add_inspector(Box::new(RepetitionInspector::new(None)));
 
         tool_inspection_manager
+    }
+
+    /// Emit a lifecycle hook event (for use by CLI/server for session events)
+    pub async fn emit_hook(
+        &self,
+        event: crate::hooks::HookEvent,
+        session_id: &str,
+        working_dir: Option<&str>,
+    ) {
+        if self.hook_manager.has_hooks(event) {
+            let ctx = crate::hooks::HookContext {
+                event: event.to_string(),
+                session_id: session_id.to_string(),
+                tool_name: None,
+                tool_input: None,
+                tool_result: None,
+                message: None,
+                working_dir: working_dir.map(|s| s.to_string()),
+            };
+            self.hook_manager.emit(event, ctx).await;
+        }
     }
 
     /// Reset the retry attempts counter to 0
@@ -568,6 +591,40 @@ impl Agent {
             .await
             .record_tool_arguments(&tool_call.arguments, &session.working_dir);
 
+        // Emit before_tool_call hook
+        if self
+            .hook_manager
+            .has_hooks(crate::hooks::HookEvent::BeforeToolCall)
+        {
+            let hook_ctx = crate::hooks::HookContext {
+                event: "before_tool_call".to_string(),
+                session_id: session.id.clone(),
+                tool_name: Some(tool_call.name.to_string()),
+                tool_input: tool_call.arguments.as_ref().map(|a| serde_json::json!(a)),
+                tool_result: None,
+                message: None,
+                working_dir: Some(session.working_dir.to_string_lossy().to_string()),
+            };
+            let decision = self
+                .hook_manager
+                .emit(crate::hooks::HookEvent::BeforeToolCall, hook_ctx)
+                .await;
+            if decision.block {
+                let reason = decision
+                    .reason
+                    .unwrap_or_else(|| "Blocked by hook".to_string());
+                tracing::info!(tool = %tool_call.name, reason = %reason, "Tool call blocked by before_tool_call hook");
+                return (
+                    request_id,
+                    Err(ErrorData::new(
+                        ErrorCode::INVALID_REQUEST,
+                        format!("Tool call blocked by hook: {}", reason),
+                        None,
+                    )),
+                );
+            }
+        }
+
         if tool_call.name == PLATFORM_MANAGE_SCHEDULE_TOOL_NAME {
             let arguments = tool_call
                 .arguments
@@ -632,6 +689,25 @@ impl Agent {
         };
 
         debug!("WAITING_TOOL_END: {}", tool_call.name);
+
+        // Emit after_tool_call hook (fire-and-forget, no blocking)
+        if self
+            .hook_manager
+            .has_hooks(crate::hooks::HookEvent::AfterToolCall)
+        {
+            let hook_ctx = crate::hooks::HookContext {
+                event: "after_tool_call".to_string(),
+                session_id: session.id.clone(),
+                tool_name: Some(tool_call.name.to_string()),
+                tool_input: tool_call.arguments.as_ref().map(|a| serde_json::json!(a)),
+                tool_result: None,
+                message: None,
+                working_dir: Some(session.working_dir.to_string_lossy().to_string()),
+            };
+            self.hook_manager
+                .emit(crate::hooks::HookEvent::AfterToolCall, hook_ctx)
+                .await;
+        }
 
         (
             request_id,
@@ -1039,6 +1115,25 @@ impl Agent {
         }
 
         let message_text = user_message.as_concat_text();
+
+        // Emit before_reply hook
+        if self
+            .hook_manager
+            .has_hooks(crate::hooks::HookEvent::BeforeReply)
+        {
+            let hook_ctx = crate::hooks::HookContext {
+                event: "before_reply".to_string(),
+                session_id: session_config.id.clone(),
+                tool_name: None,
+                tool_input: None,
+                tool_result: None,
+                message: Some(message_text.clone()),
+                working_dir: None,
+            };
+            self.hook_manager
+                .emit(crate::hooks::HookEvent::BeforeReply, hook_ctx)
+                .await;
+        }
 
         // Track custom slash command usage (don't track command name for privacy)
         if message_text.trim().starts_with('/') {
