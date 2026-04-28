@@ -300,16 +300,16 @@ describe("chatStore session loading state", () => {
   describe("pending first message", () => {
     it("setPendingFirstMessage stores by sessionId", () => {
       useChatStore.getState().setPendingFirstMessage("s1", "hello");
-      expect(useChatStore.getState().pendingFirstMessageBySession.s1).toBe(
-        "hello",
-      );
+      expect(useChatStore.getState().pendingFirstMessageBySession.s1).toEqual({
+        text: "hello",
+      });
     });
 
     it("consumePendingFirstMessage returns and clears the entry", () => {
       useChatStore.getState().setPendingFirstMessage("s1", "hello");
-      expect(useChatStore.getState().consumePendingFirstMessage("s1")).toBe(
-        "hello",
-      );
+      expect(useChatStore.getState().consumePendingFirstMessage("s1")).toEqual({
+        text: "hello",
+      });
       expect(
         useChatStore.getState().consumePendingFirstMessage("s1"),
       ).toBeUndefined();
@@ -328,12 +328,30 @@ describe("chatStore session loading state", () => {
       useChatStore.getState().setPendingFirstMessage("s1", "first");
       useChatStore.getState().setPendingFirstMessage("s2", "second");
 
-      expect(useChatStore.getState().consumePendingFirstMessage("s1")).toBe(
-        "first",
-      );
-      expect(useChatStore.getState().pendingFirstMessageBySession.s2).toBe(
-        "second",
-      );
+      expect(useChatStore.getState().consumePendingFirstMessage("s1")).toEqual({
+        text: "first",
+      });
+      expect(useChatStore.getState().pendingFirstMessageBySession.s2).toEqual({
+        text: "second",
+      });
+    });
+
+    it("stores attachments with the pending first message", () => {
+      const attachments = [
+        {
+          id: "a1",
+          kind: "file" as const,
+          name: "notes.md",
+          path: "/tmp/notes.md",
+        },
+      ];
+
+      useChatStore.getState().setPendingFirstMessage("s1", "", attachments);
+
+      expect(useChatStore.getState().consumePendingFirstMessage("s1")).toEqual({
+        text: "",
+        attachments,
+      });
     });
   });
 });

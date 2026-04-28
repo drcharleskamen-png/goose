@@ -20,12 +20,12 @@ interface PersonaGalleryProps {
 
 function SkeletonCard() {
   return (
-    <div aria-hidden="true" className="flex flex-col items-center px-3 py-4">
-      <Skeleton className="h-[220px] w-[110px]" />
-      <Skeleton className="mt-3 h-px w-[149px]" />
-      <Skeleton className="mt-3 h-5 w-20" />
-      <Skeleton className="mt-3 h-4 w-full" />
-      <Skeleton className="mt-1 h-4 w-3/4" />
+    <div aria-hidden="true" className="flex w-[200px] shrink-0 flex-col py-4">
+      <div className="flex h-[420px] w-full items-end justify-center">
+        <Skeleton className="h-full w-[140px]" />
+      </div>
+      <Skeleton className="mt-4 h-px w-full" />
+      <Skeleton className="mt-4 h-[144px] w-full" />
     </div>
   );
 }
@@ -58,7 +58,7 @@ export function PersonaGallery({
       <section
         role="status"
         aria-label={t("gallery.loading")}
-        className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-x-12 gap-y-16 p-8"
+        className="flex h-full items-center gap-32 overflow-x-auto px-16"
       >
         <SkeletonCard />
         <SkeletonCard />
@@ -72,8 +72,8 @@ export function PersonaGallery({
     <section
       {...dropHandlers}
       className={cn(
-        "grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-x-12 gap-y-16 rounded-tile p-8 transition-colors",
-        isDragOver && "ring-2 ring-ring ring-offset-2",
+        "flex h-full items-center gap-32 overflow-x-auto px-16 transition-colors",
+        isDragOver && "ring-2 ring-ring ring-offset-2 ring-inset",
       )}
     >
       {sorted.map((persona) => (

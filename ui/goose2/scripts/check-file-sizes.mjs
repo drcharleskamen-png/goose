@@ -36,9 +36,9 @@ const EXCEPTIONS = {
       "Search-as-you-type filtering and draft-aware sidebar highlight logic.",
   },
   "src/app/AppShell.tsx": {
-    limit: 780,
+    limit: 830,
     justification:
-      "Shell still coordinates ACP session loading, replay-buffer cleanup on load failure, project reassignment, home-session restoration, app-level chat routing, restored project-draft reuse, and app-level compaction settings deep links. Includes gated [perf:load]/[perf:newtab] logging via perfLog (dev-only by default).",
+      "Shell still coordinates ACP session loading, replay-buffer cleanup on load failure, project reassignment, home-session restoration, app-level chat routing, restored project-draft reuse, app-level compaction settings deep links, and the global-composer pending-first-message handoff (attachments + model/provider selection threaded into new sessions). Includes gated [perf:load]/[perf:newtab] logging via perfLog (dev-only by default).",
   },
   "src/features/chat/hooks/useChatSessionController.ts": {
     limit: 840,

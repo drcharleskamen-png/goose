@@ -151,6 +151,7 @@ describe("useChatSessionController", () => {
       sessionStateById: {},
       draftsBySession: {},
       queuedMessageBySession: {},
+      pendingFirstMessageBySession: {},
       scrollTargetMessageBySession: {},
       activeSessionId: null,
       isConnected: true,

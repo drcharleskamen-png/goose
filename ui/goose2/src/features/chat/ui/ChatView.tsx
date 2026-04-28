@@ -80,8 +80,8 @@ export function ChatView({
       messages={controller.messages}
       allowedRoots={allowedArtifactRoots}
     >
-      <div className="relative flex h-full min-w-0 p-4">
-        <div className="flex min-w-0 flex-1 overflow-hidden rounded-card-chat bg-[var(--surface-card)]">
+      <div className="relative flex h-full min-w-0 p-3">
+        <div className="mb-20 flex min-w-0 flex-1 overflow-hidden rounded-card-chat bg-[var(--surface-card)]">
           <div className="flex min-w-0 flex-1 flex-col">
             {controller.isLoadingHistory ? (
               <ChatLoadingSkeleton />
@@ -94,6 +94,7 @@ export function ChatView({
                 }
                 scrollTargetQuery={controller.scrollTarget?.query ?? null}
                 onScrollTargetHandled={controller.handleScrollTargetHandled}
+                className="pb-24"
               />
             )}
 
@@ -111,7 +112,29 @@ export function ChatView({
                 />
               ) : null}
             </AnimatePresence>
+          </div>
 
+          <ChatContextPanel
+            activeSessionId={sessionId}
+            isOpen={isContextPanelOpen}
+            label={contextPanelLabel}
+            project={controller.project}
+            setOpen={setContextPanelOpen}
+          />
+        </div>
+
+        {/* Frosted-glass input pill — straddles the card's bottom edge.
+            CSS-only: translucent tint + heavy backdrop blur + saturation re-boost +
+            stacked ring edges (inset specular highlight + hairline outer outline). */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-20 flex translate-y-1/2 justify-center px-4">
+          <div
+            className="pointer-events-auto w-full max-w-3xl rounded-[40px] bg-white/15 ring-1 ring-inset ring-white/60 outline outline-1 outline-black/5"
+            style={{
+              backdropFilter: "blur(24px) saturate(180%) brightness(1.05)",
+              WebkitBackdropFilter:
+                "blur(24px) saturate(180%) brightness(1.05)",
+            }}
+          >
             <ChatInput
               onSend={controller.handleSend}
               disabled={
@@ -161,14 +184,6 @@ export function ChatView({
               supportsCompactionControls={controller.supportsCompactionControls}
             />
           </div>
-
-          <ChatContextPanel
-            activeSessionId={sessionId}
-            isOpen={isContextPanelOpen}
-            label={contextPanelLabel}
-            project={controller.project}
-            setOpen={setContextPanelOpen}
-          />
         </div>
       </div>
     </ArtifactPolicyProvider>

@@ -33,7 +33,10 @@ import { resolveSessionCwd } from "@/features/projects/lib/sessionCwdSelection";
 import { perfLog } from "@/shared/lib/perfLog";
 import { useProviderInventoryStore } from "@/features/providers/stores/providerInventoryStore";
 import { sanitizeReplayMessages } from "@/features/chat/lib/replaySanitizer";
-import { GlobalComposerPill } from "@/shared/ui/GlobalComposerPill";
+import {
+  GlobalComposerPill,
+  type GlobalComposeOptions,
+} from "@/shared/ui/GlobalComposerPill";
 
 export type AppView =
   | "home"
@@ -273,19 +276,34 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   }, [activeView, ensureHomeSession]);
 
   const createNewTab = useCallback(
-    async (title = DEFAULT_CHAT_TITLE, project?: ProjectInfo) => {
+    async (
+      title = DEFAULT_CHAT_TITLE,
+      project?: ProjectInfo | null,
+      composeOptions?: GlobalComposeOptions,
+    ) => {
       const tStart = performance.now();
       perfLog(
         `[perf:newtab] createNewTab start (project=${project?.id ?? "none"})`,
       );
+      const effectiveProject = project ?? null;
       const agentId = agentStore.activeAgentId ?? undefined;
       const providerId =
-        project?.preferredProvider ?? agentStore.selectedProvider ?? "goose";
+        composeOptions?.providerId ??
+        effectiveProject?.preferredProvider ??
+        agentStore.selectedProvider ??
+        "goose";
+      const preferredModel =
+        composeOptions?.modelId ??
+        (composeOptions?.providerId &&
+        effectiveProject?.preferredProvider &&
+        composeOptions.providerId !== effectiveProject.preferredProvider
+          ? undefined
+          : (effectiveProject?.preferredModel ?? undefined));
       const sessionModelPreference =
         await resolveSupportedSessionModelPreference(
           providerId,
           providerInventoryEntries,
-          project?.preferredModel ?? undefined,
+          preferredModel,
         );
       const sessionState = useChatSessionStore.getState();
       const chatState = useChatStore.getState();
@@ -296,11 +314,17 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
         messagesBySession: chatState.messagesBySession,
         request: {
           title,
-          projectId: project?.id,
+          projectId: effectiveProject?.id,
         },
       });
 
-      if (existingDraft) {
+      const draftMatchesSelection =
+        existingDraft &&
+        existingDraft.providerId === sessionModelPreference.providerId &&
+        (existingDraft.modelId ?? null) ===
+          (sessionModelPreference.modelId ?? null);
+
+      if (draftMatchesSelection) {
         sessionStore.setActiveSession(existingDraft.id);
         setActiveView("chat");
         chatStore.setActiveSession(existingDraft.id);
@@ -310,15 +334,17 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
         return existingDraft;
       }
 
-      const workingDir = await resolveSessionCwd(project);
+      const workingDir = await resolveSessionCwd(effectiveProject);
       const session = await sessionStore.createSession({
         title,
-        projectId: project?.id,
+        projectId: effectiveProject?.id,
         agentId,
         providerId: sessionModelPreference.providerId,
         workingDir,
         modelId: sessionModelPreference.modelId,
-        modelName: sessionModelPreference.modelName,
+        modelName: sessionModelPreference.modelId
+          ? (composeOptions?.modelName ?? sessionModelPreference.modelName)
+          : undefined,
       });
       sessionStore.setActiveSession(session.id);
       setActiveView("chat");
@@ -345,11 +371,17 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   );
 
   const handleGlobalCompose = useCallback(
-    async (text: string) => {
-      const session = await createNewTab(DEFAULT_CHAT_TITLE);
-      chatStore.setPendingFirstMessage(session.id, text);
+    async (text: string, options?: GlobalComposeOptions) => {
+      const project =
+        options?.projectId != null
+          ? (projectStore.projects.find(
+              (candidate) => candidate.id === options.projectId,
+            ) ?? null)
+          : null;
+      const session = await createNewTab(DEFAULT_CHAT_TITLE, project, options);
+      chatStore.setPendingFirstMessage(session.id, text, options?.attachments);
     },
-    [createNewTab, chatStore],
+    [createNewTab, chatStore, projectStore.projects],
   );
 
   const handleNewChatInProject = useCallback(
@@ -663,6 +695,9 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
         <TopBar
           onSettingsClick={() => openSettings()}
           activeView={activeView}
+          chatSessionTitle={
+            activeView === "chat" ? activeSession?.title : undefined
+          }
         />
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -698,7 +733,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
               activeView={activeView}
               activeSessionId={activeSessionId}
               projects={projectStore.projects}
-              className="h-full rounded-xl"
+              className="rounded-xl"
             />
           </div>
 

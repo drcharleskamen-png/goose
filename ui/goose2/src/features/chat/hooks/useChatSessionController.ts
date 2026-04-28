@@ -737,8 +737,8 @@ export function useChatSessionController({
     const pending = useChatStore
       .getState()
       .consumePendingFirstMessage(sessionId);
-    if (pending) {
-      void sendMessage(pending);
+    if (pending && (pending.text.trim().length > 0 || pending.attachments)) {
+      void sendMessage(pending.text, undefined, pending.attachments);
     }
   }, [sessionId, sendMessage]);
 

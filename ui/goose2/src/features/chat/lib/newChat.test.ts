@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { findExistingDraft } from "./newChat";
 import type { ChatSession } from "../stores/chatSessionStore";
+import { createUserMessage } from "@/shared/types/messages";
 
 function makeSession(
   id: string,
@@ -110,9 +111,7 @@ describe("findExistingDraft", () => {
         activeSessionId: "alpha-session",
         draftsBySession: {},
         messagesBySession: {
-          "alpha-session": [
-            { id: "msg-1", role: "user", content: "hello" } as any,
-          ],
+          "alpha-session": [createUserMessage("hello")],
         },
         request: {
           title: "New Chat",

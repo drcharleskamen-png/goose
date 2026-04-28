@@ -68,7 +68,7 @@ interface ChatStoreState {
   sessionStateById: Record<string, SessionChatRuntime>;
   queuedMessageBySession: Record<string, QueuedMessage>;
   draftsBySession: Record<string, string>;
-  pendingFirstMessageBySession: Record<string, string>;
+  pendingFirstMessageBySession: Record<string, QueuedMessage>;
   activeSessionId: string | null;
   isConnected: boolean;
   loadingSessionIds: Set<string>;
@@ -114,8 +114,12 @@ interface ChatStoreActions {
   dismissQueuedMessage: (sessionId: string) => void;
   setDraft: (sessionId: string, text: string) => void;
   clearDraft: (sessionId: string) => void;
-  setPendingFirstMessage: (sessionId: string, text: string) => void;
-  consumePendingFirstMessage: (sessionId: string) => string | undefined;
+  setPendingFirstMessage: (
+    sessionId: string,
+    text: string,
+    attachments?: ChatAttachmentDraft[],
+  ) => void;
+  consumePendingFirstMessage: (sessionId: string) => QueuedMessage | undefined;
   setSessionLoading: (sessionId: string, loading: boolean) => void;
   setScrollTargetMessage: (
     sessionId: string,
@@ -455,23 +459,26 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   // Pending first message (auto-submit on session creation)
-  setPendingFirstMessage: (sessionId, text) =>
+  setPendingFirstMessage: (sessionId, text, attachments) =>
     set((state) => ({
       pendingFirstMessageBySession: {
         ...state.pendingFirstMessageBySession,
-        [sessionId]: text,
+        [sessionId]: {
+          text,
+          ...(attachments?.length ? { attachments } : {}),
+        },
       },
     })),
 
   consumePendingFirstMessage: (sessionId) => {
-    const text = get().pendingFirstMessageBySession[sessionId];
-    if (text === undefined) return undefined;
+    const pendingMessage = get().pendingFirstMessageBySession[sessionId];
+    if (pendingMessage === undefined) return undefined;
     set((state) => {
       const { [sessionId]: _removed, ...rest } =
         state.pendingFirstMessageBySession;
       return { pendingFirstMessageBySession: rest };
     });
-    return text;
+    return pendingMessage;
   },
 
   // Session loading (replay)
