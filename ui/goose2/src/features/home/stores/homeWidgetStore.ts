@@ -1,11 +1,47 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { HOME_WIDGET_CATALOG_BY_ID } from "../widgets/catalog";
 import type { CanvasBounds, WidgetInstance } from "../widgets/types";
 
 export const HOME_WIDGET_STORAGE_KEY = "goose2:home-widgets";
 
 const BASELINE_CANVAS: CanvasBounds = { width: 1080, height: 760 };
+
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear: () => store.clear(),
+    getItem: (key) => store.get(key) ?? null,
+    key: (index) => Array.from(store.keys())[index] ?? null,
+    removeItem: (key) => {
+      store.delete(key);
+    },
+    setItem: (key, value) => {
+      store.set(key, value);
+    },
+  };
+}
+
+function getPersistStorage(): Storage {
+  if (typeof window === "undefined") {
+    return createMemoryStorage();
+  }
+
+  const storage = window.localStorage;
+  if (
+    storage &&
+    typeof storage.getItem === "function" &&
+    typeof storage.setItem === "function" &&
+    typeof storage.removeItem === "function"
+  ) {
+    return storage;
+  }
+
+  return createMemoryStorage();
+}
 
 function maxZ(instances: WidgetInstance[]): number {
   return instances.reduce((max, instance) => Math.max(max, instance.z), 0);
@@ -158,6 +194,7 @@ export const useHomeWidgetStore = create<HomeWidgetStore>()(
     }),
     {
       name: HOME_WIDGET_STORAGE_KEY,
+      storage: createJSONStorage(getPersistStorage),
       version: 1,
       partialize: (state) => ({ instances: state.instances }),
     },
