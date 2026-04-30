@@ -74,10 +74,13 @@ export function ExtensionsSettings() {
     activeFilter === "gooseCapabilities"
       ? gooseCapabilities
       : [...primaryExtensions, ...gooseCapabilities];
+  const hasSearch = searchTerm.trim().length > 0;
   const shouldShowGooseCapabilities =
-    activeFilter === "gooseCapabilities" || showGooseCapabilities;
+    activeFilter === "gooseCapabilities" || showGooseCapabilities || hasSearch;
   const showGooseCapabilitiesToggle =
-    activeFilter !== "gooseCapabilities" && gooseCapabilities.length > 0;
+    activeFilter !== "gooseCapabilities" &&
+    !hasSearch &&
+    gooseCapabilities.length > 0;
 
   const categoryCounts = useMemo(
     () => getExtensionCategoryCounts(extensions),
