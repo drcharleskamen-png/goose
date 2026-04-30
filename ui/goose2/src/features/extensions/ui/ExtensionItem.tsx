@@ -2,11 +2,14 @@ import { useTranslation } from "react-i18next";
 import { IconSettings } from "@tabler/icons-react";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
+import { Switch } from "@/shared/ui/switch";
+import { isToggleableGooseCapability } from "../lib/extensionCategories";
 import { getDisplayName, type ExtensionEntry } from "../types";
 
 interface ExtensionItemProps {
   extension: ExtensionEntry;
   onConfigure?: (extension: ExtensionEntry) => void;
+  onToggleEnabled?: (extension: ExtensionEntry, enabled: boolean) => void;
   className?: string;
 }
 
@@ -26,10 +29,12 @@ function isEditable(ext: ExtensionEntry): boolean {
 export function ExtensionItem({
   extension,
   onConfigure,
+  onToggleEnabled,
   className,
 }: ExtensionItemProps) {
   const { t } = useTranslation("settings");
   const editable = isEditable(extension);
+  const toggleable = isToggleableGooseCapability(extension);
   const displayName = getDisplayName(extension);
 
   return (
@@ -48,6 +53,16 @@ export function ExtensionItem({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
+        {toggleable && onToggleEnabled ? (
+          <Switch
+            checked={extension.enabled}
+            onCheckedChange={(enabled) => onToggleEnabled(extension, enabled)}
+            aria-label={t(
+              extension.enabled ? "extensions.disable" : "extensions.enable",
+              { name: displayName },
+            )}
+          />
+        ) : null}
         {editable && onConfigure && (
           <Button
             variant="ghost"

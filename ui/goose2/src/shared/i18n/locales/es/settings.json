@@ -82,6 +82,8 @@
     "editExtension": "Editar extensión",
     "deleteExtension": "Eliminar extensión",
     "configure": "Configurar {{name}}",
+    "enable": "Activar {{name}}",
+    "disable": "Desactivar {{name}}",
     "save": "Guardar",
     "cancel": "Cancelar",
     "fields": {
@@ -124,6 +126,7 @@
     "errors": {
       "saveFailed": "Error al guardar la extensión. Inténtalo de nuevo.",
       "deleteFailed": "Error al eliminar la extensión. Inténtalo de nuevo.",
+      "toggleFailed": "Error al actualizar {{name}}. Inténtalo de nuevo.",
       "nameConflict": "Ya existe una extensión llamada \"{{name}}\"."
     }
   },

@@ -37,3 +37,14 @@ export async function removeExtension(configKey: string): Promise<void> {
   const client = await getClient();
   await client.goose.GooseConfigExtensionsRemove({ configKey });
 }
+
+export async function setExtensionEnabled(
+  configKey: string,
+  enabled: boolean,
+): Promise<void> {
+  const client = await getClient();
+  await client.goose.GooseConfigExtensionsToggle({
+    configKey,
+    enabled,
+  });
+}

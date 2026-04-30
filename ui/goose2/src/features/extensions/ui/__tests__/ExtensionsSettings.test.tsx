@@ -28,10 +28,21 @@ const extensions: ExtensionEntry[] = [
     config_key: "developer",
     enabled: true,
   },
+  {
+    type: "platform",
+    name: "summarize",
+    display_name: "Summarize",
+    description: "Summarize files",
+    config_key: "summarize",
+    enabled: false,
+  },
 ];
 
 describe("ExtensionsSettings", () => {
+  let handleToggleEnabled: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
+    handleToggleEnabled = vi.fn();
     mockUseExtensionsSettings.mockReturnValue({
       extensions,
       isLoading: false,
@@ -41,6 +52,7 @@ describe("ExtensionsSettings", () => {
       handleConfigure: vi.fn(),
       handleSubmit: vi.fn(),
       handleDelete: vi.fn(),
+      handleToggleEnabled,
       handleModalClose: vi.fn(),
     });
   });
@@ -58,6 +70,22 @@ describe("ExtensionsSettings", () => {
       screen.queryByRole("button", {
         name: /show .*built-in goose capabilities/i,
       }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows an enable toggle for default-off Goose capabilities", async () => {
+    const user = userEvent.setup();
+    render(<ExtensionsSettings />);
+
+    await user.type(screen.getByRole("searchbox"), "summarize");
+    await user.click(screen.getByRole("switch", { name: /enable summarize/i }));
+
+    expect(handleToggleEnabled).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "summarize" }),
+      true,
+    );
+    expect(
+      screen.queryByRole("switch", { name: /enable developer/i }),
     ).not.toBeInTheDocument();
   });
 });

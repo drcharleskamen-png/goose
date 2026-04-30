@@ -41,24 +41,6 @@ pub(crate) fn is_extension_available(config: &ExtensionConfig) -> bool {
     }
 }
 
-fn is_hidden_platform_extension(config: &ExtensionConfig) -> bool {
-    match config {
-        ExtensionConfig::Platform { name, .. } | ExtensionConfig::Builtin { name, .. } => {
-            PLATFORM_EXTENSIONS
-                .get(name_to_key(name).as_str())
-                .is_some_and(|def| def.hidden)
-        }
-        _ => false,
-    }
-}
-
-fn normalize_extension_entry(mut entry: ExtensionEntry) -> ExtensionEntry {
-    if !is_hidden_platform_extension(&entry.config) {
-        entry.enabled = true;
-    }
-    entry
-}
-
 fn get_extensions_map_with_config(config: &Config) -> IndexMap<String, ExtensionEntry> {
     let raw: Mapping = config
         .get_param(EXTENSIONS_CONFIG_KEY)
@@ -77,7 +59,7 @@ fn get_extensions_map_with_config(config: &Config) -> IndexMap<String, Extension
                 if !is_extension_available(&entry.config) {
                     continue;
                 }
-                extensions_map.insert(key, normalize_extension_entry(entry));
+                extensions_map.insert(key, entry);
             }
             (k, v) => {
                 warn!(
@@ -243,6 +225,20 @@ mod tests {
         }
     }
 
+    fn disabled_default_off_platform_extension() -> ExtensionEntry {
+        ExtensionEntry {
+            enabled: false,
+            config: ExtensionConfig::Platform {
+                name: "summarize".to_string(),
+                description: "Load files/directories and get an LLM summary in a single call"
+                    .to_string(),
+                display_name: Some("Summarize".to_string()),
+                bundled: Some(true),
+                available_tools: Vec::new(),
+            },
+        }
+    }
+
     #[test]
     fn test_is_extension_available_filters_unknown_platform() {
         let unknown_platform = ExtensionConfig::Platform {
@@ -267,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn test_visible_extensions_are_treated_as_enabled() {
+    fn test_disabled_extensions_keep_enabled_state() {
         let config = test_config();
         let mut extensions = IndexMap::new();
         extensions.insert("legacy".to_string(), disabled_stdio_extension("legacy"));
@@ -276,10 +272,10 @@ mod tests {
             .unwrap();
 
         let all_extensions = get_extensions_map_with_config(&config);
-        assert!(all_extensions.get("legacy").unwrap().enabled);
+        assert!(!all_extensions.get("legacy").unwrap().enabled);
 
         let enabled_extensions = get_enabled_extensions_with_config(&config);
-        assert!(enabled_extensions
+        assert!(!enabled_extensions
             .iter()
             .any(|extension| extension.name() == "legacy"));
     }
@@ -301,5 +297,24 @@ mod tests {
         assert!(!get_enabled_extensions_with_config(&config)
             .iter()
             .any(|extension| extension.name() == "orchestrator"));
+    }
+
+    #[test]
+    fn test_default_off_platform_extensions_keep_enabled_state() {
+        let config = test_config();
+        let mut extensions = IndexMap::new();
+        extensions.insert(
+            "summarize".to_string(),
+            disabled_default_off_platform_extension(),
+        );
+        config
+            .set_param(EXTENSIONS_CONFIG_KEY, &extensions)
+            .unwrap();
+
+        let all_extensions = get_extensions_map_with_config(&config);
+        assert!(!all_extensions.get("summarize").unwrap().enabled);
+        assert!(!get_enabled_extensions_with_config(&config)
+            .iter()
+            .any(|extension| extension.name() == "summarize"));
     }
 }

@@ -82,6 +82,8 @@
     "editExtension": "Edit Extension",
     "deleteExtension": "Delete Extension",
     "configure": "Configure {{name}}",
+    "enable": "Enable {{name}}",
+    "disable": "Disable {{name}}",
     "save": "Save",
     "cancel": "Cancel",
     "fields": {
@@ -124,6 +126,7 @@
     "errors": {
       "saveFailed": "Failed to save extension. Please try again.",
       "deleteFailed": "Failed to delete extension. Please try again.",
+      "toggleFailed": "Failed to update {{name}}. Please try again.",
       "nameConflict": "An extension named \"{{name}}\" already exists."
     }
   },
