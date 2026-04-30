@@ -51,12 +51,35 @@ export interface SseExtensionConfig {
   bundled?: boolean;
 }
 
+export interface FrontendExtensionConfig {
+  type: "frontend";
+  name: string;
+  description: string;
+  tools: unknown[];
+  frontend_tools?: unknown[];
+  instructions?: string;
+  bundled?: boolean;
+  available_tools?: string[];
+}
+
+export interface InlinePythonExtensionConfig {
+  type: "inline_python";
+  name: string;
+  description: string;
+  code: string;
+  timeout?: number;
+  dependencies?: string[];
+  available_tools?: string[];
+}
+
 export type ExtensionConfig =
   | StdioExtensionConfig
   | BuiltinExtensionConfig
   | PlatformExtensionConfig
   | StreamableHttpExtensionConfig
-  | SseExtensionConfig;
+  | SseExtensionConfig
+  | FrontendExtensionConfig
+  | InlinePythonExtensionConfig;
 
 export type ExtensionEntry = ExtensionConfig & {
   config_key: string;

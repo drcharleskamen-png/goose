@@ -3,7 +3,6 @@ import { IconSettings } from "@tabler/icons-react";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { Switch } from "@/shared/ui/switch";
-import { isToggleableGooseCapability } from "../lib/extensionCategories";
 import { getDisplayName, type ExtensionEntry } from "../types";
 
 interface ExtensionItemProps {
@@ -20,10 +19,14 @@ function getSubtitle(ext: ExtensionEntry): string {
   return ext.type;
 }
 
-const EDITABLE_TYPES = new Set(["stdio", "streamable_http"]);
+function isUserManagedExtension(ext: ExtensionEntry): boolean {
+  return (
+    (ext.type === "stdio" || ext.type === "streamable_http") && !ext.bundled
+  );
+}
 
 function isEditable(ext: ExtensionEntry): boolean {
-  return EDITABLE_TYPES.has(ext.type) && !ext.bundled;
+  return isUserManagedExtension(ext);
 }
 
 export function ExtensionItem({
@@ -34,7 +37,7 @@ export function ExtensionItem({
 }: ExtensionItemProps) {
   const { t } = useTranslation("settings");
   const editable = isEditable(extension);
-  const toggleable = isToggleableGooseCapability(extension);
+  const toggleable = isUserManagedExtension(extension);
   const displayName = getDisplayName(extension);
 
   return (

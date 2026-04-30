@@ -11,12 +11,6 @@ export const EXTENSION_CATEGORIES: readonly ExtensionCategory[] = [
 ];
 
 const GOOSE_CAPABILITY_TYPES = new Set(["builtin", "platform"]);
-const TOGGLEABLE_GOOSE_CAPABILITIES = new Set([
-  "chatrecall",
-  "summarize",
-  "code_execution",
-]);
-
 export function classifyExtension(
   extension: ExtensionEntry,
 ): ExtensionCategory {
@@ -24,15 +18,6 @@ export function classifyExtension(
     return "gooseCapabilities";
   }
   return "appsServices";
-}
-
-export function isToggleableGooseCapability(
-  extension: ExtensionEntry,
-): boolean {
-  return (
-    classifyExtension(extension) === "gooseCapabilities" &&
-    TOGGLEABLE_GOOSE_CAPABILITIES.has(extension.name)
-  );
 }
 
 export function compareExtensionsByName(

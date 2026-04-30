@@ -1,5 +1,129 @@
 use super::*;
-use crate::agents::extension_manager::is_hidden_extension;
+use std::collections::HashSet;
+
+fn extension_config_to_dto(config: ExtensionConfig) -> ExtensionConfigDto {
+    match config {
+        ExtensionConfig::Sse {
+            name,
+            description,
+            uri,
+        } => ExtensionConfigDto::Sse {
+            name,
+            description,
+            uri,
+            bundled: None,
+        },
+        ExtensionConfig::Stdio {
+            name,
+            description,
+            cmd,
+            args,
+            envs: _,
+            env_keys,
+            timeout,
+            bundled,
+            available_tools,
+        } => ExtensionConfigDto::Stdio {
+            name,
+            description,
+            cmd,
+            args,
+            envs: HashMap::new(),
+            env_keys,
+            timeout: timeout_to_dto(timeout),
+            bundled,
+            available_tools,
+        },
+        ExtensionConfig::Builtin {
+            name,
+            description,
+            display_name,
+            timeout,
+            bundled,
+            available_tools,
+        } => ExtensionConfigDto::Builtin {
+            name,
+            description,
+            display_name,
+            timeout: timeout_to_dto(timeout),
+            bundled,
+            available_tools,
+        },
+        ExtensionConfig::Platform {
+            name,
+            description,
+            display_name,
+            bundled,
+            available_tools,
+        } => ExtensionConfigDto::Platform {
+            name,
+            description,
+            display_name,
+            bundled,
+            available_tools,
+        },
+        ExtensionConfig::StreamableHttp {
+            name,
+            description,
+            uri,
+            envs: _,
+            env_keys,
+            headers: _,
+            timeout,
+            socket,
+            bundled,
+            available_tools,
+        } => ExtensionConfigDto::StreamableHttp {
+            name,
+            description,
+            uri,
+            envs: HashMap::new(),
+            env_keys,
+            headers: HashMap::new(),
+            timeout: timeout_to_dto(timeout),
+            socket,
+            bundled,
+            available_tools,
+        },
+        ExtensionConfig::Frontend {
+            name,
+            description,
+            tools,
+            instructions,
+            bundled,
+            available_tools,
+        } => ExtensionConfigDto::Frontend {
+            name,
+            description,
+            frontend_tools: tools
+                .into_iter()
+                .filter_map(|tool| serde_json::to_value(tool).ok())
+                .collect(),
+            instructions,
+            bundled,
+            available_tools,
+        },
+        ExtensionConfig::InlinePython {
+            name,
+            description,
+            code,
+            timeout,
+            dependencies,
+            available_tools,
+        } => ExtensionConfigDto::InlinePython {
+            name,
+            description,
+            code,
+            timeout: timeout_to_dto(timeout),
+            dependencies,
+            available_tools,
+        },
+    }
+}
+
+fn timeout_to_dto(timeout: Option<u64>) -> Option<u32> {
+    timeout.and_then(|value| u32::try_from(value).ok())
+}
 
 impl GooseAcpAgent {
     pub(super) async fn on_add_extension(
@@ -149,27 +273,58 @@ impl GooseAcpAgent {
             Some(&session.extension_data),
             crate::config::Config::global(),
         );
+        let agent = self.get_session_agent(&req.session_id, None).await?;
+        let connected_extensions = agent.get_extension_configs().await;
+        let connected_keys = connected_extensions
+            .iter()
+            .map(ExtensionConfig::key)
+            .collect::<HashSet<_>>();
+        let mut seen_keys = HashSet::new();
+        let mut extensions = Vec::new();
+
+        for extension in expected_extensions {
+            seen_keys.insert(extension.key());
+            extensions.push(extension);
+        }
+
+        for extension in connected_extensions {
+            if seen_keys.insert(extension.key()) {
+                extensions.push(extension);
+            }
+        }
 
         let mut extensions_json = Vec::new();
-        for extension in expected_extensions {
-            if is_hidden_extension(&extension.name()) {
-                continue;
-            }
-
+        for extension in extensions {
             let config_key = extension.key();
-            let mut value = serde_json::to_value(&extension).internal_err()?;
-            if let Some(obj) = value.as_object_mut() {
-                obj.insert(
-                    "config_key".to_string(),
-                    serde_json::Value::String(config_key),
-                );
-                obj.insert(
-                    "status".to_string(),
-                    serde_json::Value::String("available".to_string()),
-                );
-                obj.insert("tools".to_string(), serde_json::Value::Array(Vec::new()));
-            }
-            extensions_json.push(value);
+            let extension_name = extension.name();
+            let connected = connected_keys.contains(&config_key);
+            let tools = if connected {
+                agent
+                    .list_tools(&internal_id, Some(extension_name.clone()))
+                    .await
+                    .into_iter()
+                    .map(|tool| tool.name.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            extensions_json.push(SessionExtensionStatusDto {
+                config: extension_config_to_dto(extension),
+                config_key,
+                status: if connected {
+                    ExtensionConnectionStatusDto::Connected
+                } else {
+                    ExtensionConnectionStatusDto::Failed
+                },
+                tools,
+                error: if connected {
+                    None
+                } else {
+                    Some(
+                        "Goose could not connect this extension when the chat started.".to_string(),
+                    )
+                },
+            });
         }
 
         Ok(GetSessionExtensionStatusResponse {

@@ -138,8 +138,83 @@ export type GetSessionExtensionStatusRequest = {
 };
 
 export type GetSessionExtensionStatusResponse = {
-    extensions: Array<unknown>;
+    extensions: Array<SessionExtensionStatusDto>;
 };
+
+export type SessionExtensionStatusDto = ({
+    name: string;
+    description: string;
+    uri?: string | null;
+    bundled?: boolean | null;
+    type: 'sse';
+} | {
+    name: string;
+    description: string;
+    cmd: string;
+    args: Array<string>;
+    envs?: {
+        [key: string]: string;
+    };
+    env_keys?: Array<string>;
+    timeout?: number | null;
+    bundled?: boolean | null;
+    available_tools?: Array<string>;
+    type: 'stdio';
+} | {
+    name: string;
+    description: string;
+    display_name?: string | null;
+    timeout?: number | null;
+    bundled?: boolean | null;
+    available_tools?: Array<string>;
+    type: 'builtin';
+} | {
+    name: string;
+    description: string;
+    display_name?: string | null;
+    bundled?: boolean | null;
+    available_tools?: Array<string>;
+    type: 'platform';
+} | {
+    name: string;
+    description: string;
+    uri: string;
+    envs?: {
+        [key: string]: string;
+    };
+    env_keys?: Array<string>;
+    headers?: {
+        [key: string]: string;
+    };
+    timeout?: number | null;
+    socket?: string | null;
+    bundled?: boolean | null;
+    available_tools?: Array<string>;
+    type: 'streamable_http';
+} | {
+    name: string;
+    description: string;
+    frontend_tools?: Array<unknown>;
+    instructions?: string | null;
+    bundled?: boolean | null;
+    available_tools?: Array<string>;
+    type: 'frontend';
+} | {
+    name: string;
+    description: string;
+    code: string;
+    timeout?: number | null;
+    dependencies?: Array<string> | null;
+    available_tools?: Array<string>;
+    type: 'inline_python';
+}) & {
+    config_key: string;
+    status: ExtensionConnectionStatusDto;
+    tools?: Array<string>;
+    error?: string | null;
+};
+
+export type ExtensionConnectionStatusDto = 'connected' | 'failed' | 'available' | 'unavailable';
 
 /**
  * List providers with setup metadata and the current model inventory snapshot.

@@ -7,14 +7,13 @@ import {
 } from "@/features/extensions/api/extensions";
 import {
   getDisplayName,
-  type ExtensionConfig,
   type ExtensionEntry,
   type SessionExtensionStatus,
 } from "@/features/extensions/types";
-import { nameToKey } from "@/features/extensions/lib/extensionKeys";
 import { getUsedSessionExtensions } from "@/features/extensions/lib/extensionUsage";
+import { normalizeExtensionKey } from "@/features/extensions/lib/extensionKeys";
 import { cn } from "@/shared/lib/cn";
-import type { Message } from "@/shared/types/messages";
+import type { Message, ToolRequestContent } from "@/shared/types/messages";
 import { useChatStore } from "../../stores/chatStore";
 import { Widget } from "./Widget";
 
@@ -23,15 +22,6 @@ interface ExtensionsWidgetProps {
 }
 
 const EMPTY_MESSAGES: Message[] = [];
-
-function toAvailableStatus(extension: ExtensionConfig): SessionExtensionStatus {
-  return {
-    ...extension,
-    config_key: nameToKey(extension.name),
-    status: "available",
-    tools: [],
-  };
-}
 
 function toUnavailableStatus(
   extension: ExtensionEntry,
@@ -45,14 +35,11 @@ function toUnavailableStatus(
 }
 
 function mergeExtensionStatuses(
-  sessionExtensions: ExtensionConfig[],
+  sessionExtensions: SessionExtensionStatus[],
   configuredExtensions: ExtensionEntry[],
 ): SessionExtensionStatus[] {
   const byKey = new Map(
-    sessionExtensions.map((extension) => [
-      nameToKey(extension.name),
-      toAvailableStatus(extension),
-    ]),
+    sessionExtensions.map((extension) => [extension.config_key, extension]),
   );
   for (const extension of configuredExtensions) {
     if (!byKey.has(extension.config_key)) {
@@ -60,6 +47,19 @@ function mergeExtensionStatuses(
     }
   }
   return Array.from(byKey.values());
+}
+
+function toolRequestOwnerKey(toolRequest: ToolRequestContent): string {
+  if (toolRequest.extensionName) {
+    return normalizeExtensionKey(toolRequest.extensionName);
+  }
+
+  const toolName = toolRequest.toolName ?? toolRequest.name;
+  const [owner] = toolName.split("__");
+  if (owner && owner !== toolName) {
+    return normalizeExtensionKey(owner);
+  }
+  return normalizeExtensionKey(toolName);
 }
 
 function ExtensionRow({ extension }: { extension: SessionExtensionStatus }) {
@@ -116,23 +116,22 @@ export function ExtensionsWidget({ sessionId }: ExtensionsWidgetProps) {
     (s) => s.messagesBySession[sessionId] ?? EMPTY_MESSAGES,
   );
 
-  const toolRequestSignature = useMemo(() => {
-    return messages
-      .flatMap((message) =>
-        message.content
-          .filter((content) => content.type === "toolRequest")
-          .map(
-            (content) =>
-              `${content.id}:${content.name}:${content.toolName ?? ""}:${content.extensionName ?? ""}:${content.status}`,
-          ),
-      )
-      .join("|");
+  const toolOwnerSignature = useMemo(() => {
+    const owners = new Set<string>();
+    for (const message of messages) {
+      for (const content of message.content) {
+        if (content.type === "toolRequest") {
+          owners.add(toolRequestOwnerKey(content));
+        }
+      }
+    }
+    return Array.from(owners).sort().join("|");
   }, [messages]);
 
   useEffect(() => {
     let isCurrent = true;
 
-    if (!toolRequestSignature) {
+    if (!toolOwnerSignature) {
       setExtensions([]);
       setIsLoading(false);
       return () => {
@@ -142,7 +141,9 @@ export function ExtensionsWidget({ sessionId }: ExtensionsWidgetProps) {
 
     setIsLoading(true);
     Promise.all([
-      listSessionExtensions(sessionId).catch(() => [] as ExtensionConfig[]),
+      listSessionExtensions(sessionId).catch(
+        () => [] as SessionExtensionStatus[],
+      ),
       listExtensions().catch(() => [] as ExtensionEntry[]),
     ])
       .then(([sessionExtensions, configuredExtensions]) => {
@@ -166,7 +167,7 @@ export function ExtensionsWidget({ sessionId }: ExtensionsWidgetProps) {
     return () => {
       isCurrent = false;
     };
-  }, [sessionId, toolRequestSignature]);
+  }, [sessionId, toolOwnerSignature]);
 
   const used = useMemo(
     () => getUsedSessionExtensions(extensions, messages),

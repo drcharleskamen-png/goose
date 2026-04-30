@@ -73,17 +73,15 @@ describe("ExtensionsSettings", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows an enable toggle for default-off Goose capabilities", async () => {
+  it("does not show global enable toggles for Goose capabilities", async () => {
     const user = userEvent.setup();
     render(<ExtensionsSettings />);
 
     await user.type(screen.getByRole("searchbox"), "summarize");
-    await user.click(screen.getByRole("switch", { name: /enable summarize/i }));
 
-    expect(handleToggleEnabled).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "summarize" }),
-      true,
-    );
+    expect(
+      screen.queryByRole("switch", { name: /enable summarize/i }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("switch", { name: /enable developer/i }),
     ).not.toBeInTheDocument();

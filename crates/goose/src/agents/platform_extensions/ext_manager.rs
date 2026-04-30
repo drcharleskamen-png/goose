@@ -1,7 +1,10 @@
 use crate::agents::extension::PlatformExtensionContext;
 use crate::agents::mcp_client::{Error, McpClientTrait};
 use crate::agents::tool_execution::ToolCallContext;
-use crate::config::{get_extension_by_name, set_extension_enabled_by_name};
+use crate::agents::ExtensionConfig;
+use crate::config::extensions::name_to_key;
+use crate::config::get_extension_by_name;
+use crate::session::{EnabledExtensionsState, ExtensionState};
 use anyhow::Result;
 use async_trait::async_trait;
 use indoc::indoc;
@@ -73,6 +76,37 @@ pub struct ExtensionManagerClient {
     info: InitializeResult,
     #[allow(dead_code)]
     context: PlatformExtensionContext,
+}
+
+fn find_extension_name(extensions: &[ExtensionConfig], extension_name: &str) -> Option<String> {
+    let requested_key = name_to_key(extension_name);
+    extensions
+        .iter()
+        .find(|extension| extension.key() == requested_key)
+        .map(ExtensionConfig::name)
+}
+
+fn remove_extension_from_list(
+    extensions: &mut Vec<ExtensionConfig>,
+    extension_name: &str,
+) -> Option<String> {
+    let requested_key = name_to_key(extension_name);
+    let index = extensions
+        .iter()
+        .position(|extension| extension.key() == requested_key)?;
+    Some(extensions.remove(index).name())
+}
+
+fn upsert_extension(extensions: &mut Vec<ExtensionConfig>, config: ExtensionConfig) {
+    let config_key = config.key();
+    if let Some(existing) = extensions
+        .iter_mut()
+        .find(|extension| extension.key() == config_key)
+    {
+        *existing = config;
+    } else {
+        extensions.push(config);
+    }
 }
 
 impl ExtensionManagerClient {
@@ -160,17 +194,37 @@ impl ExtensionManagerClient {
                     None,
                 )
             })?;
+        let session = self.current_session().await?;
+
+        let mut desired_extensions = EnabledExtensionsState::extensions_or_default(
+            Some(&session.extension_data),
+            crate::config::Config::global(),
+        );
 
         if action == ManageExtensionAction::Disable {
+            let desired_name = remove_extension_from_list(&mut desired_extensions, &extension_name);
+            let live_extensions = extension_manager.get_extension_configs().await;
+            let live_name = find_extension_name(&live_extensions, &extension_name);
+            let config_name = desired_name.or(live_name).ok_or_else(|| {
+                ErrorData::new(
+                    ErrorCode::RESOURCE_NOT_FOUND,
+                    format!(
+                        "Extension '{}' is not enabled in this session.",
+                        extension_name
+                    ),
+                    None,
+                )
+            })?;
             extension_manager
-                .remove_extension(&extension_name)
+                .remove_extension(&config_name)
                 .await
                 .map_err(|e| ErrorData::new(ErrorCode::INTERNAL_ERROR, e.to_string(), None))?;
 
-            set_extension_enabled_by_name(&extension_name, false);
+            self.persist_session_extension_state(&session.id, desired_extensions)
+                .await?;
 
             return Ok(vec![Content::text(format!(
-                "The extension '{}' has been disabled successfully",
+                "The extension '{}' has been disabled for this session",
                 extension_name
             ))]);
         }
@@ -189,27 +243,98 @@ impl ExtensionManagerClient {
             }
         };
         let config_name = config.name();
+        upsert_extension(&mut desired_extensions, config.clone());
 
         extension_manager
-            .add_extension(config, None, None, None)
+            .add_extension(
+                config,
+                Some(session.working_dir.clone()),
+                None,
+                Some(&session.id),
+            )
             .await
             .map_err(|e| ErrorData::new(ErrorCode::INTERNAL_ERROR, e.to_string(), None))?;
 
-        if !set_extension_enabled_by_name(&config_name, true) {
-            return Err(ErrorData::new(
-                ErrorCode::INTERNAL_ERROR,
-                format!(
-                    "Extension '{}' was enabled for this session but could not be saved to config",
-                    extension_name
-                ),
-                None,
-            ));
-        }
+        self.persist_session_extension_state(&session.id, desired_extensions)
+            .await?;
 
         Ok(vec![Content::text(format!(
-            "The extension '{}' has been enabled successfully",
-            extension_name
+            "The extension '{}' has been enabled for this session",
+            config_name
         ))])
+    }
+
+    async fn current_session(&self) -> Result<crate::session::Session, ErrorData> {
+        let session_id = self
+            .context
+            .session
+            .as_ref()
+            .map(|session| session.id.clone());
+        let Some(session_id) = session_id else {
+            return Err(ErrorData::new(
+                ErrorCode::INTERNAL_ERROR,
+                "Extension manager is not attached to a session".to_string(),
+                None,
+            ));
+        };
+
+        self.context
+            .session_manager
+            .get_session(&session_id, false)
+            .await
+            .map_err(|e| {
+                ErrorData::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("Failed to load current session: {e}"),
+                    None,
+                )
+            })
+    }
+
+    async fn persist_session_extension_state(
+        &self,
+        session_id: &str,
+        extensions: Vec<ExtensionConfig>,
+    ) -> Result<(), ErrorData> {
+        let extensions_state = EnabledExtensionsState::new(extensions);
+        let session = self
+            .context
+            .session_manager
+            .get_session(session_id, false)
+            .await
+            .map_err(|e| {
+                ErrorData::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("Failed to load current session: {e}"),
+                    None,
+                )
+            })?;
+        let mut extension_data = session.extension_data;
+        extensions_state
+            .to_extension_data(&mut extension_data)
+            .map_err(|e| {
+                ErrorData::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("Failed to serialize session extension state: {e}"),
+                    None,
+                )
+            })?;
+
+        self.context
+            .session_manager
+            .update(session_id)
+            .extension_data(extension_data)
+            .apply()
+            .await
+            .map_err(|e| {
+                ErrorData::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("Failed to save session extension state: {e}"),
+                    None,
+                )
+            })?;
+
+        Ok(())
     }
 
     async fn handle_list_resources(

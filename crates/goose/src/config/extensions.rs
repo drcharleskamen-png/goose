@@ -87,10 +87,8 @@ fn save_extensions_map(extensions: IndexMap<String, ExtensionEntry>) {
 
 pub fn get_extension_by_name(name: &str) -> Option<ExtensionConfig> {
     let extensions = get_extensions_map();
-    extensions
-        .values()
-        .find(|entry| entry.config.name() == name)
-        .map(|entry| entry.config.clone())
+    let key = extension_key_for_name_in_map(&extensions, name)?;
+    extensions.get(&key).map(|entry| entry.config.clone())
 }
 
 pub fn set_extension(entry: ExtensionEntry) {
@@ -114,30 +112,19 @@ pub fn set_extension_enabled(key: &str, enabled: bool) {
     }
 }
 
-fn set_extension_enabled_by_name_in_map(
-    extensions: &mut IndexMap<String, ExtensionEntry>,
+fn extension_key_for_name_in_map(
+    extensions: &IndexMap<String, ExtensionEntry>,
     name: &str,
-    enabled: bool,
-) -> bool {
-    let Some(entry) = extensions
-        .values_mut()
-        .find(|entry| entry.config.name() == name)
-    else {
-        return false;
-    };
-
-    entry.enabled = enabled;
-    true
-}
-
-pub fn set_extension_enabled_by_name(name: &str, enabled: bool) -> bool {
-    let mut extensions = get_extensions_map();
-    if set_extension_enabled_by_name_in_map(&mut extensions, name, enabled) {
-        save_extensions_map(extensions);
-        true
-    } else {
-        false
+) -> Option<String> {
+    let normalized_key = name_to_key(name);
+    if extensions.contains_key(&normalized_key) {
+        return Some(normalized_key);
     }
+
+    extensions
+        .iter()
+        .find(|(_, entry)| entry.config.key() == normalized_key)
+        .map(|(key, _)| key.clone())
 }
 
 pub fn get_all_extensions() -> Vec<ExtensionEntry> {
@@ -307,27 +294,23 @@ mod tests {
     }
 
     #[test]
-    fn test_set_extension_enabled_by_name_updates_matching_entry() {
+    fn test_get_extension_by_name_normalizes_lookup() {
         let config = test_config();
         let mut extensions = IndexMap::new();
-        extensions.insert("legacy".to_string(), disabled_stdio_extension("legacy"));
+        extensions.insert(
+            "my_extension".to_string(),
+            disabled_stdio_extension("My Extension"),
+        );
         config
             .set_param(EXTENSIONS_CONFIG_KEY, &extensions)
             .unwrap();
 
-        let mut extensions = get_extensions_map_with_config(&config);
-        assert!(set_extension_enabled_by_name_in_map(
-            &mut extensions,
-            "legacy",
-            true
-        ));
-        config
-            .set_param(EXTENSIONS_CONFIG_KEY, &extensions)
-            .unwrap();
+        let extensions = get_extensions_map_with_config(&config);
 
-        assert!(get_enabled_extensions_with_config(&config)
-            .iter()
-            .any(|extension| extension.name() == "legacy"));
+        assert_eq!(
+            extension_key_for_name_in_map(&extensions, "myextension"),
+            Some("my_extension".to_string())
+        );
     }
 
     #[test]
