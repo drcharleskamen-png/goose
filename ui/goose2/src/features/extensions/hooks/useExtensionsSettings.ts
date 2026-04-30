@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   addExtension,
+  enableExtension,
   listExtensions,
   removeExtension,
 } from "../api/extensions";
@@ -18,6 +19,9 @@ export function useExtensionsSettings() {
   const [modalMode, setModalMode] = useState<ExtensionModalMode>(null);
   const [editingExtension, setEditingExtension] =
     useState<ExtensionEntry | null>(null);
+  const [enablingConfigKey, setEnablingConfigKey] = useState<string | null>(
+    null,
+  );
 
   const fetchExtensions = useCallback(async () => {
     setIsLoading(true);
@@ -89,6 +93,26 @@ export function useExtensionsSettings() {
     [fetchExtensions, t],
   );
 
+  const handleEnable = useCallback(
+    async (extension: ExtensionEntry) => {
+      if (extension.enabled || enablingConfigKey) return;
+      setEnablingConfigKey(extension.config_key);
+      try {
+        await enableExtension(extension.config_key);
+        await fetchExtensions();
+      } catch {
+        toast.error(
+          t("extensions.errors.enableFailed", {
+            name: extension.name,
+          }),
+        );
+      } finally {
+        setEnablingConfigKey(null);
+      }
+    },
+    [enablingConfigKey, fetchExtensions, t],
+  );
+
   const handleModalClose = useCallback(() => {
     setModalMode(null);
     setEditingExtension(null);
@@ -99,10 +123,12 @@ export function useExtensionsSettings() {
     isLoading,
     modalMode,
     editingExtension,
+    enablingConfigKey,
     handleAdd,
     handleConfigure,
     handleSubmit,
     handleDelete,
+    handleEnable,
     handleModalClose,
   };
 }

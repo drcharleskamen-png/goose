@@ -81,6 +81,7 @@
     "addExtension": "Add Extension",
     "editExtension": "Edit Extension",
     "deleteExtension": "Delete Extension",
+    "enable": "Enable",
     "configure": "Configure {{name}}",
     "save": "Save",
     "cancel": "Cancel",
@@ -123,6 +124,7 @@
     "hideGooseCapabilities": "Hide built-in Goose capabilities",
     "errors": {
       "saveFailed": "Failed to save extension. Please try again.",
+      "enableFailed": "Failed to enable {{name}}. Please try again.",
       "deleteFailed": "Failed to delete extension. Please try again.",
       "nameConflict": "An extension named \"{{name}}\" already exists."
     }

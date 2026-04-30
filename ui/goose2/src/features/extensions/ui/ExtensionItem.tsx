@@ -7,6 +7,8 @@ import { getDisplayName, type ExtensionEntry } from "../types";
 interface ExtensionItemProps {
   extension: ExtensionEntry;
   onConfigure?: (extension: ExtensionEntry) => void;
+  onEnable?: (extension: ExtensionEntry) => void;
+  isEnabling?: boolean;
   className?: string;
 }
 
@@ -26,6 +28,8 @@ function isEditable(ext: ExtensionEntry): boolean {
 export function ExtensionItem({
   extension,
   onConfigure,
+  onEnable,
+  isEnabling = false,
   className,
 }: ExtensionItemProps) {
   const { t } = useTranslation("settings");
@@ -48,6 +52,17 @@ export function ExtensionItem({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
+        {!extension.enabled && onEnable && (
+          <Button
+            type="button"
+            variant="outline-flat"
+            size="xs"
+            disabled={isEnabling}
+            onClick={() => onEnable(extension)}
+          >
+            {t("extensions.enable")}
+          </Button>
+        )}
         {editable && onConfigure && (
           <Button
             variant="ghost"
