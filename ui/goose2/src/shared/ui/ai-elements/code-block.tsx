@@ -289,7 +289,7 @@ const CodeBlockBody = memo(
     return (
       <pre
         className={cn(
-          "dark:!text-[var(--shiki-dark)] m-0 p-4 text-sm",
+          "dark:!text-[var(--shiki-dark)] m-0 p-3 text-[13px] leading-5",
           !transparentBackground && "dark:!bg-[var(--shiki-dark-bg)]",
           className,
         )}
@@ -297,7 +297,7 @@ const CodeBlockBody = memo(
       >
         <code
           className={cn(
-            "font-mono text-sm",
+            "font-mono text-[13px] leading-5",
             showLineNumbers &&
               "[counter-increment:line_0] [counter-reset:line]",
           )}
@@ -331,7 +331,7 @@ export const CodeBlockContainer = ({
 }: HTMLAttributes<HTMLDivElement> & { language: string }) => (
   <div
     className={cn(
-      "group relative w-full min-w-0 max-w-full overflow-hidden rounded-md border bg-background text-foreground",
+      "group relative w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-border-soft bg-background-alt/50 text-foreground",
       className,
     )}
     data-language={language}
@@ -351,7 +351,7 @@ export const CodeBlockHeader = ({
 }: HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex items-center justify-between border-b bg-muted/80 px-3 py-2 text-muted-foreground text-xs",
+      "flex min-h-8 items-center justify-between border-border-soft border-b bg-transparent px-3 py-1.5 text-muted-foreground text-xs",
       className,
     )}
     {...props}
@@ -386,7 +386,7 @@ export const CodeBlockActions = ({
   ...props
 }: HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("-my-1 -mr-1 flex items-center gap-2", className)}
+    className={cn("-my-1 -mr-0.5 flex items-center gap-1", className)}
     {...props}
   >
     {children}
@@ -542,7 +542,7 @@ export const CodeBlockCopyButton = ({
       aria-label={t("components.codeBlock.copyLabel")}
       className={cn("shrink-0", className)}
       onClick={copyToClipboard}
-      size="icon"
+      size="icon-xs"
       title={t("components.codeBlock.copyLabel")}
       variant="ghost"
       {...props}
