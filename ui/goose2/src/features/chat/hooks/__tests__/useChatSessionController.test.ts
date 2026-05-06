@@ -203,6 +203,7 @@ describe("useChatSessionController", () => {
         "session-1",
         "anthropic",
         "/tmp/project",
+        { personaId: undefined },
       );
     });
 
@@ -245,7 +246,6 @@ describe("useChatSessionController", () => {
           archivedAt: null,
           createdAt: "2026-04-20T00:00:00.000Z",
           updatedAt: "2026-04-20T00:00:00.000Z",
-          artifactsDir: "/tmp/project/artifacts",
         },
       ],
       loading: false,
@@ -430,6 +430,7 @@ describe("useChatSessionController", () => {
         "session-2",
         "anthropic",
         "/tmp/project",
+        { personaId: undefined },
       );
     });
 

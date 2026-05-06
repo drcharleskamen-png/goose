@@ -556,18 +556,15 @@ function handleShared(
 
     case "usage_update": {
       const usage = update as SessionUpdate & { sessionUpdate: "usage_update" };
-      if (!getLocalSessionId(gooseSessionId)) {
-        pendingUsageUpdates.set(gooseSessionId, {
-          accumulatedTotal: usage.used,
-          contextLimit: usage.size,
-        });
-        break;
-      }
-
-      useChatStore.getState().updateTokenState(sessionId, {
+      const tokenState = {
         accumulatedTotal: usage.used,
         contextLimit: usage.size,
-      });
+      };
+      if (!getLocalSessionId(gooseSessionId)) {
+        pendingUsageUpdates.set(gooseSessionId, tokenState);
+      }
+
+      useChatStore.getState().updateTokenState(sessionId, tokenState);
       break;
     }
 
