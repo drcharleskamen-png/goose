@@ -1326,7 +1326,6 @@ mod tests {
     fn test_push_does_not_coalesce_multi_block_thinking_message() {
         use crate::conversation::message::MessageContent;
 
-        // First push: single Thinking block — establishes the message in the conversation.
         let mut conv = Conversation::empty();
         conv.push(
             Message::assistant()
@@ -1334,9 +1333,8 @@ mod tests {
                 .with_id("turn-1"),
         );
 
-        // Second push has multiple blocks (Thinking + Text). The merge arm requires
-        // `message.content.len() == 1`, so this must NOT coalesce into the existing
-        // thinking block — both new blocks are appended.
+        // Multi-block message must NOT coalesce into the existing thinking
+        // block — the merge arm requires `message.content.len() == 1`.
         let mut multi = Message::assistant().with_thinking("second", "");
         multi = multi.with_text("and now text").with_id("turn-1");
         conv.push(multi);
