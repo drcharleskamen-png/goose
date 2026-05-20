@@ -1,7 +1,7 @@
 use crate::conversation::message::{Message, MessageContent};
 use crate::model::ModelConfig;
 use crate::providers::formats::anthropic::{
-    thinking_budget_tokens, thinking_effort, thinking_type, ThinkingType,
+    adaptive_effort_value, thinking_budget_tokens, thinking_type, ThinkingType,
 };
 use crate::providers::utils::{
     convert_image, detect_image_path, extract_reasoning_effort, is_openai_responses_model,
@@ -237,10 +237,9 @@ fn apply_claude_thinking_config(payload: &mut Value, model_config: &ModelConfig)
     match thinking_type(model_config) {
         ThinkingType::Adaptive => {
             obj.insert("thinking".to_string(), json!({ "type": "adaptive" }));
-            obj.insert(
-                "output_config".to_string(),
-                json!({ "effort": thinking_effort(model_config).to_string() }),
-            );
+            if let Some(effort) = adaptive_effort_value(model_config) {
+                obj.insert("output_config".to_string(), json!({ "effort": effort }));
+            }
             obj.insert(
                 "max_completion_tokens".to_string(),
                 json!(model_config.max_output_tokens()),

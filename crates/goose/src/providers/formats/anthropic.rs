@@ -503,13 +503,21 @@ pub fn thinking_effort(model_config: &ModelConfig) -> ThinkingEffort {
         .unwrap_or(ThinkingEffort::High)
 }
 
-fn adaptive_effort_value(model_config: &ModelConfig) -> &'static str {
-    match model_config.thinking_effort() {
-        Some(ThinkingEffort::Low) => "low",
-        Some(ThinkingEffort::Medium) => "medium",
-        Some(ThinkingEffort::Max) if is_claude_opus_47(&model_config.model_name) => "xhigh",
-        Some(ThinkingEffort::Max) => "max",
-        Some(ThinkingEffort::Off | ThinkingEffort::High) | None => "high",
+pub fn adaptive_effort_value(model_config: &ModelConfig) -> Option<&'static str> {
+    adaptive_effort_value_for_model(&model_config.model_name, model_config.thinking_effort())
+}
+
+fn adaptive_effort_value_for_model(
+    model_name: &str,
+    effort: Option<ThinkingEffort>,
+) -> Option<&'static str> {
+    match effort? {
+        ThinkingEffort::Off => None,
+        ThinkingEffort::Low => Some("low"),
+        ThinkingEffort::Medium => Some("medium"),
+        ThinkingEffort::High => Some("high"),
+        ThinkingEffort::Max if is_claude_opus_47(model_name) => Some("xhigh"),
+        ThinkingEffort::Max => Some("max"),
     }
 }
 
@@ -562,8 +570,9 @@ fn apply_thinking_config(
                 "thinking".to_string(),
                 json!({"type": "adaptive", "display": "summarized"}),
             );
-            let effort = adaptive_effort_value(model_config);
-            obj.insert("output_config".to_string(), json!({"effort": effort}));
+            if let Some(effort) = adaptive_effort_value(model_config) {
+                obj.insert("output_config".to_string(), json!({"effort": effort}));
+            }
         }
         ThinkingType::Enabled => {
             let budget_tokens = thinking_budget_tokens(model_config);
@@ -587,8 +596,9 @@ fn apply_thinking_config(
                     "thinking".to_string(),
                     json!({"type": "adaptive", "display": "summarized"}),
                 );
-                let effort = adaptive_effort_value(model_config);
-                obj.insert("output_config".to_string(), json!({"effort": effort}));
+                if let Some(effort) = adaptive_effort_value(model_config) {
+                    obj.insert("output_config".to_string(), json!({"effort": effort}));
+                }
             } else {
                 let budget_tokens = thinking_budget_tokens(model_config);
                 obj.insert("max_tokens".to_string(), json!(max_tokens + budget_tokens));
@@ -1245,40 +1255,11 @@ mod tests {
     }
 
     #[test]
-    fn test_create_request_preserved_opus_47_context_defaults_to_high_effort() -> Result<()> {
-        let _guard = env_lock::lock_env([
-            ("GOOSE_THINKING_EFFORT", None::<&str>),
-            ("CLAUDE_THINKING_TYPE", None::<&str>),
-            ("CLAUDE_THINKING_ENABLED", None::<&str>),
-            ("ANTHROPIC_THINKING_BUDGET", None::<&str>),
-            ("CLAUDE_THINKING_BUDGET", None::<&str>),
-            ("ANTHROPIC_PRESERVE_THINKING_CONTEXT", None::<&str>),
-            ("ANTHROPIC_PRESERVE_UNSIGNED_THINKING", None::<&str>),
-        ]);
-
-        let mut config = cfg("claude-opus-4-7");
-        config.max_tokens = Some(4096);
-        let messages = vec![
-            Message::assistant().with_content(MessageContent::thinking("internal", "")),
-            Message::user().with_text("Continue"),
-        ];
-
-        let payload = create_request_with_options(
-            &config,
-            "system",
-            &messages,
-            &[],
-            AnthropicFormatOptions {
-                preserve_unsigned_thinking: true,
-                preserve_thinking_context: true,
-            },
-        )?;
-
-        assert_eq!(payload["thinking"]["type"], "adaptive");
-        assert_eq!(payload["output_config"]["effort"], "high");
-        assert_eq!(payload["max_tokens"], 4096);
-
-        Ok(())
+    fn test_adaptive_effort_omits_unset_default() {
+        assert_eq!(
+            adaptive_effort_value_for_model("claude-opus-4-7", None),
+            None
+        );
     }
 
     #[test]

@@ -413,12 +413,16 @@ export const SwitchModelModal = ({
       };
 
       if (showThinkingControl) {
-        const effort = thinkingEffort ?? modelObj.request_params?.thinking_effort ?? 'off';
-        modelObj = {
-          ...modelObj,
-          request_params: { ...modelObj.request_params, thinking_effort: effort },
-        };
-        upsert('GOOSE_THINKING_EFFORT', effort, false).catch(console.warn);
+        const effort = (thinkingEffort ?? modelObj.request_params?.thinking_effort) as
+          | ThinkingEffort
+          | undefined;
+        if (effort) {
+          modelObj = {
+            ...modelObj,
+            request_params: { ...modelObj.request_params, thinking_effort: effort },
+          };
+          upsert('GOOSE_THINKING_EFFORT', effort, false).catch(console.warn);
+        }
       }
 
       const success = await changeModel(sessionId, modelObj);
@@ -704,6 +708,9 @@ export const SwitchModelModal = ({
     }
   };
 
+  const selectedThinkingEffort =
+    thinkingEffort ?? (selectedPredefinedModel?.request_params?.thinking_effort as ThinkingEffort);
+
   const thinkingEffortControl = showThinkingControl && (
     <div className="mt-2">
       <label className="text-sm text-textSubtle mb-1 block">
@@ -711,10 +718,10 @@ export const SwitchModelModal = ({
       </label>
       <Select
         options={THINKING_EFFORT_OPTIONS}
-        value={THINKING_EFFORT_OPTIONS.find((o) => o.value === (thinkingEffort ?? 'off'))}
+        value={THINKING_EFFORT_OPTIONS.find((o) => o.value === selectedThinkingEffort) ?? null}
         onChange={(newValue: unknown) => {
           const option = newValue as { value: ThinkingEffort; label: string } | null;
-          setThinkingEffort(option?.value || 'off');
+          setThinkingEffort(option?.value ?? null);
         }}
         placeholder={intl.formatMessage(i18n.selectEffortLevel)}
       />

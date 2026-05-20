@@ -79,10 +79,7 @@ impl CodexProvider {
         effort: Option<crate::model::ThinkingEffort>,
     ) -> Option<String> {
         use crate::model::ThinkingEffort;
-        match effort
-            .or_else(Self::legacy_reasoning_effort)
-            .unwrap_or(ThinkingEffort::High)
-        {
+        match effort.or_else(Self::legacy_reasoning_effort)? {
             ThinkingEffort::Off => Some("none".to_string()),
             ThinkingEffort::Low => Some("low".to_string()),
             ThinkingEffort::Medium => Some("medium".to_string()),
@@ -1259,7 +1256,7 @@ mod tests {
         );
         assert_eq!(
             CodexProvider::map_thinking_effort("gpt-5.2-codex", None),
-            Some("high".to_string())
+            None
         );
     }
 
