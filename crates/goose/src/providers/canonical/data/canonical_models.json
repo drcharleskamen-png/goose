@@ -18107,15 +18107,15 @@
   },
   {
     "id": "azure/gpt-3.5-turbo",
-    "name": "GPT-3.5 Turbo 0301",
+    "name": "GPT-3.5 Turbo 0613",
     "family": "gpt",
     "attachment": false,
     "reasoning": false,
     "tool_call": false,
     "temperature": true,
     "knowledge": "2021-08",
-    "release_date": "2023-03-01",
-    "last_updated": "2023-03-01",
+    "release_date": "2023-06-13",
+    "last_updated": "2023-06-13",
     "modalities": {
       "input": [
         "text"
@@ -18126,12 +18126,12 @@
     },
     "open_weights": false,
     "cost": {
-      "input": 1.5,
-      "output": 2.0
+      "input": 3.0,
+      "output": 4.0
     },
     "limit": {
-      "context": 4096,
-      "output": 4096
+      "context": 16384,
+      "output": 16384
     }
   },
   {
@@ -91587,15 +91587,15 @@
   },
   {
     "id": "openai/gpt-4o",
-    "name": "GPT-4o (2024-05-13)",
+    "name": "GPT-4o (2024-08-06)",
     "family": "gpt",
     "attachment": true,
     "reasoning": false,
     "tool_call": true,
     "temperature": true,
     "knowledge": "2023-09",
-    "release_date": "2024-05-13",
-    "last_updated": "2024-05-13",
+    "release_date": "2024-08-06",
+    "last_updated": "2024-08-06",
     "modalities": {
       "input": [
         "text",
@@ -91607,12 +91607,13 @@
     },
     "open_weights": false,
     "cost": {
-      "input": 5.0,
-      "output": 15.0
+      "input": 2.5,
+      "output": 10.0,
+      "cache_read": 1.25
     },
     "limit": {
       "context": 128000,
-      "output": 4096
+      "output": 16384
     }
   },
   {
