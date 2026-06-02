@@ -265,17 +265,15 @@ impl ModelConfig {
         // Try canonical lookup with the full model name first, then fall back
         // to the name with reasoning-effort suffixes stripped (e.g.
         // "databricks-gpt-5.4-high" → "databricks-gpt-5.4").
-        let canonical =
-            crate::canonical::maybe_get_canonical_model(provider_name, &self.model_name).or_else(
-                || {
-                    let (base, _effort) = extract_reasoning_effort(&self.model_name);
-                    if base != self.model_name {
-                        crate::canonical::maybe_get_canonical_model(provider_name, &base)
-                    } else {
-                        None
-                    }
-                },
-            );
+        let canonical = goose_models_db::maybe_get_canonical_model(provider_name, &self.model_name)
+            .or_else(|| {
+                let (base, _effort) = extract_reasoning_effort(&self.model_name);
+                if base != self.model_name {
+                    goose_models_db::maybe_get_canonical_model(provider_name, &base)
+                } else {
+                    None
+                }
+            });
 
         if let Some(canonical) = canonical {
             if self.context_limit.is_none() {

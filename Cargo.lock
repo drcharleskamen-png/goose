@@ -4481,6 +4481,7 @@ dependencies = [
  "futures",
  "goose-acp-macros",
  "goose-mcp",
+ "goose-models-db",
  "goose-sdk",
  "goose-test-support",
  "goose-types",
@@ -4671,6 +4672,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "goose-models-db"
+version = "1.36.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "once_cell",
+ "regex",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "goose-sdk"
 version = "1.36.0"
 dependencies = [
@@ -4758,6 +4774,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "env-lock",
+ "goose-models-db",
  "once_cell",
  "regex",
  "rmcp",

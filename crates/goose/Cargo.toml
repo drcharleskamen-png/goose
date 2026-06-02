@@ -123,6 +123,7 @@ once_cell = { workspace = true }
 etcetera = { workspace = true }
 fs-err = { version = "3.1", default-features = false }
 goose-sdk = { path = "../goose-sdk", default-features = false }
+goose-models-db = { path = "../goose-models-db", default-features = false }
 rand = { workspace = true }
 utoipa = { workspace = true, features = ["chrono"] }
 tokio-cron-scheduler = { version = "0.15", default-features = false }
@@ -267,10 +268,6 @@ required-features = ["local-inference"]
 [[bin]]
 name = "analyze_cli"
 path = "src/bin/analyze_cli.rs"
-
-[[bin]]
-name = "build_canonical_models"
-path = "src/providers/canonical/build_canonical_models.rs"
 
 [[bin]]
 name = "generate-acp-schema"

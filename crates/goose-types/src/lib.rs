@@ -8,7 +8,6 @@ pub use rmcp::model::ErrorData;
 use rmcp::model::ResourceContents;
 use unicode_normalization::UnicodeNormalization;
 
-pub mod canonical;
 pub mod conversation;
 pub mod model;
 pub mod usage;

@@ -12,6 +12,7 @@ description = "Shared provider-facing Goose data types"
 anyhow = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
+goose-models-db = { path = "../goose-models-db", default-features = false }
 once_cell = { workspace = true }
 regex = { workspace = true }
 rmcp = { workspace = true, features = ["server"] }
