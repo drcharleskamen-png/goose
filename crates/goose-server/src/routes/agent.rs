@@ -285,7 +285,9 @@ async fn start_agent(
                 update = update.provider_name(provider);
 
                 if let Some(ref model) = settings.goose_model {
-                    if let Ok(model_config) = ModelConfig::new(model) {
+                    if let Ok(model_config) =
+                        ModelConfig::new_with_config(model, goose::config::Config::global())
+                    {
                         update = update.model_config(model_config);
                     }
                 }
@@ -592,14 +594,14 @@ async fn update_agent_provider(
         }
     };
 
-    let mut model_config = ModelConfig::new(&model)
+    let mut model_config = ModelConfig::new_with_config(&model, goose::config::Config::global())
         .map_err(|e| {
             (
                 StatusCode::BAD_REQUEST,
                 format!("Invalid model config: {}", e),
             )
         })?
-        .with_canonical_limits(&payload.provider)
+        .with_canonical_limits_config(&payload.provider, goose::config::Config::global())
         .with_context_limit(payload.context_limit);
 
     if let Some(request_params) = payload.request_params {

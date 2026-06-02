@@ -163,7 +163,11 @@ impl KimiCodeProvider {
     }
 
     pub async fn from_env(model: ModelConfig) -> Result<Self> {
-        let model = model.with_fast(KIMI_CODE_DEFAULT_FAST_MODEL, KIMI_CODE_PROVIDER_NAME)?;
+        let model = model.with_fast_config(
+            KIMI_CODE_DEFAULT_FAST_MODEL,
+            KIMI_CODE_PROVIDER_NAME,
+            crate::config::Config::global(),
+        )?;
         let client = Client::builder()
             .timeout(StdDuration::from_secs(DEFAULT_PROVIDER_TIMEOUT_SECS))
             .build()?;
@@ -504,7 +508,11 @@ mod tests {
             device_id: device_id.to_string(),
             auth_host: server_uri.to_string(),
             api_base: server_uri.to_string(),
-            model: ModelConfig::new(KIMI_CODE_DEFAULT_MODEL).unwrap(),
+            model: ModelConfig::new_with_config(
+                KIMI_CODE_DEFAULT_MODEL,
+                crate::config::Config::global(),
+            )
+            .unwrap(),
             name: KIMI_CODE_PROVIDER_NAME.to_string(),
         }
     }

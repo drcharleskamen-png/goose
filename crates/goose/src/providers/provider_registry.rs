@@ -58,7 +58,8 @@ impl ProviderEntry {
     }
 
     fn normalize_model_config(&self, mut model: ModelConfig) -> ModelConfig {
-        model = model.with_canonical_limits(&self.metadata.name);
+        model = model
+            .with_canonical_limits_config(&self.metadata.name, crate::config::Config::global());
 
         if model.context_limit.is_none() {
             if let Some(info) = self
@@ -79,7 +80,10 @@ impl ProviderEntry {
         extensions: Vec<ExtensionConfig>,
     ) -> Result<Arc<dyn Provider>> {
         let default_model = &self.metadata.default_model;
-        let model_config = self.normalize_model_config(ModelConfig::new(default_model.as_str())?);
+        let model_config = self.normalize_model_config(ModelConfig::new_with_config(
+            default_model.as_str(),
+            crate::config::Config::global(),
+        )?);
         (self.constructor)(model_config, extensions, None).await
     }
 

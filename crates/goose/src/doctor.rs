@@ -167,9 +167,9 @@ async fn try_create_and_test(
     provider_name: &str,
     model_name: &str,
 ) -> Result<Arc<dyn Provider>, ProviderError> {
-    let model_config = ModelConfig::new(model_name)
+    let model_config = ModelConfig::new_with_config(model_name, crate::config::Config::global())
         .map_err(|e| ProviderError::ExecutionError(e.to_string()))?
-        .with_canonical_limits(provider_name);
+        .with_canonical_limits_config(provider_name, crate::config::Config::global());
 
     let provider = providers::create(provider_name, model_config, vec![])
         .await

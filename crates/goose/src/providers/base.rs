@@ -449,14 +449,20 @@ fn model_info_for_provider_model(provider_name: &str, model_name: &str) -> Model
     let reasoning = canonical
         .as_ref()
         .and_then(|model| model.reasoning)
-        .unwrap_or_else(|| ModelConfig::new_or_fail(model_name).is_reasoning_model());
+        .unwrap_or_else(|| {
+            ModelConfig::new_or_fail_with_config(model_name, crate::config::Config::global())
+                .is_reasoning_model()
+        });
 
     ModelInfo {
         name: model_name.to_string(),
         resolved_model: None,
-        context_limit: ModelConfig::new_or_fail(model_name)
-            .with_canonical_limits(provider_name)
-            .context_limit(),
+        context_limit: ModelConfig::new_or_fail_with_config(
+            model_name,
+            crate::config::Config::global(),
+        )
+        .with_canonical_limits_config(provider_name, crate::config::Config::global())
+        .context_limit(),
         input_token_cost: None,
         output_token_cost: None,
         currency: None,

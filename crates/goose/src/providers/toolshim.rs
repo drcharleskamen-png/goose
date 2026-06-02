@@ -565,11 +565,12 @@ impl LocalInterpreter {
         &self,
         format_instruction: &str,
     ) -> Result<String, ProviderError> {
-        let model_config = ModelConfig::new(&self.model)
-            .map_err(|e| ProviderError::RequestFailed(format!("Model config error: {e}")))?
-            .with_canonical_limits("local")
-            .with_toolshim(false)
-            .with_toolshim_model(None);
+        let model_config =
+            ModelConfig::new_with_config(&self.model, crate::config::Config::global())
+                .map_err(|e| ProviderError::RequestFailed(format!("Model config error: {e}")))?
+                .with_canonical_limits_config("local", crate::config::Config::global())
+                .with_toolshim(false)
+                .with_toolshim_model(None);
 
         let provider = crate::providers::init::create("local", model_config, vec![])
             .await
@@ -691,9 +692,9 @@ impl OllamaInterpreter {
         let user_message = Message::user().with_text(format_instruction);
         messages.push(user_message);
 
-        let model_config = ModelConfig::new(model)
+        let model_config = ModelConfig::new_with_config(model, crate::config::Config::global())
             .map_err(|e| ProviderError::RequestFailed(format!("Model config error: {e}")))?
-            .with_canonical_limits("ollama");
+            .with_canonical_limits_config("ollama", crate::config::Config::global());
 
         let mut payload = create_request(
             &model_config,

@@ -1401,8 +1401,10 @@ impl SummonClient {
         provider_name: &str,
     ) -> Result<crate::model::ModelConfig, anyhow::Error> {
         let mut model_config = session.model_config.clone().map(Ok).unwrap_or_else(|| {
-            crate::model::ModelConfig::new("default")
-                .map(|c| c.with_canonical_limits(provider_name))
+            crate::model::ModelConfig::new_with_config("default", crate::config::Config::global())
+                .map(|c| {
+                    c.with_canonical_limits_config(provider_name, crate::config::Config::global())
+                })
         })?;
 
         let override_model = params
@@ -1423,8 +1425,11 @@ impl SummonClient {
                 // overridden model, then preserve session-level state that is
                 // not model-specific from the parent.
                 let parent = model_config;
-                let mut cfg =
-                    crate::model::ModelConfig::new(&model)?.with_canonical_limits(provider_name);
+                let mut cfg = crate::model::ModelConfig::new_with_config(
+                    &model,
+                    crate::config::Config::global(),
+                )?
+                .with_canonical_limits_config(provider_name, crate::config::Config::global());
                 cfg.toolshim = parent.toolshim;
                 cfg.toolshim_model = parent.toolshim_model;
                 cfg.fast_model_config = parent.fast_model_config;
@@ -2236,9 +2241,9 @@ You review code."#;
     }
 
     fn parent_config() -> crate::model::ModelConfig {
-        crate::model::ModelConfig::new(PARENT_MODEL)
+        crate::model::ModelConfig::new_with_config(PARENT_MODEL, crate::config::Config::global())
             .unwrap()
-            .with_canonical_limits(PROVIDER)
+            .with_canonical_limits_config(PROVIDER, crate::config::Config::global())
     }
 
     #[tokio::test]
@@ -2251,9 +2256,12 @@ You review code."#;
         ]);
 
         let parent = parent_config();
-        let overridden = crate::model::ModelConfig::new(OVERRIDE_MODEL)
-            .unwrap()
-            .with_canonical_limits(PROVIDER);
+        let overridden = crate::model::ModelConfig::new_with_config(
+            OVERRIDE_MODEL,
+            crate::config::Config::global(),
+        )
+        .unwrap()
+        .with_canonical_limits_config(PROVIDER, crate::config::Config::global());
         assert_ne!(parent.context_limit, overridden.context_limit);
         assert_ne!(parent.reasoning, overridden.reasoning);
 

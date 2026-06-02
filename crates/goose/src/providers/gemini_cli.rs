@@ -327,7 +327,8 @@ mod tests {
     fn make_provider() -> GeminiCliProvider {
         GeminiCliProvider {
             command: PathBuf::from("gemini"),
-            model: ModelConfig::new("gemini-2.5-pro").unwrap(),
+            model: ModelConfig::new_with_config("gemini-2.5-pro", crate::config::Config::global())
+                .unwrap(),
             name: "gemini-cli".to_string(),
             cli_session_id: Arc::new(OnceLock::new()),
         }

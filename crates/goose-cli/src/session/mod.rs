@@ -838,7 +838,8 @@ impl CliSession {
             build_switched_model_config(&current_provider_name, model_name, &current_model_config)?;
 
         if new_model_config.model_name == current_model_config.model_name
-            && new_model_config.thinking_effort() == current_model_config.thinking_effort()
+            && new_model_config.thinking_effort_with_config(goose::config::Config::global())
+                == current_model_config.thinking_effort_with_config(goose::config::Config::global())
         {
             output::goose_mode_message(&format!(
                 "Session already using model '{}' for provider '{}'",
@@ -2141,8 +2142,12 @@ async fn get_reasoner() -> Result<Arc<dyn Provider>, anyhow::Error> {
             .expect("No model configured. Run 'goose configure' first")
     };
 
-    let model_config =
-        ModelConfig::new_with_context_env(model, &provider, Some("GOOSE_PLANNER_CONTEXT_LIMIT"))?;
+    let model_config = ModelConfig::new_with_context_env_and_config(
+        model,
+        &provider,
+        Some("GOOSE_PLANNER_CONTEXT_LIMIT"),
+        goose::config::Config::global(),
+    )?;
     let extensions = goose::config::extensions::get_enabled_extensions_with_config(config);
     let reasoner = create(&provider, model_config, extensions).await?;
 
@@ -2167,10 +2172,10 @@ fn build_switched_model_config(
     model_name: &str,
     current_model_config: &goose::model::ModelConfig,
 ) -> Result<goose::model::ModelConfig> {
-    goose::model::ModelConfig::new(model_name)
+    goose::model::ModelConfig::new_with_config(model_name, goose::config::Config::global())
         .map(|config| {
             config
-                .with_canonical_limits(provider_name)
+                .with_canonical_limits_config(provider_name, goose::config::Config::global())
                 .with_temperature(current_model_config.temperature)
                 .with_toolshim(current_model_config.toolshim)
                 .with_toolshim_model(current_model_config.toolshim_model.clone())
@@ -2334,11 +2339,14 @@ mod tests {
 
         let switched =
             build_switched_model_config("openai", "gpt-5.4", &current_model_config).unwrap();
-        let expected = goose::model::ModelConfig::new_or_fail("gpt-5.4")
-            .with_canonical_limits("openai")
-            .with_temperature(Some(0.25))
-            .with_toolshim(true)
-            .with_toolshim_model(Some("qwen2.5-coder".to_string()));
+        let expected = goose::model::ModelConfig::new_or_fail_with_config(
+            "gpt-5.4",
+            goose::config::Config::global(),
+        )
+        .with_canonical_limits_config("openai", goose::config::Config::global())
+        .with_temperature(Some(0.25))
+        .with_toolshim(true)
+        .with_toolshim_model(Some("qwen2.5-coder".to_string()));
 
         assert_eq!(switched.model_name, expected.model_name);
         assert_eq!(switched.context_limit, expected.context_limit);
@@ -2361,18 +2369,24 @@ mod tests {
             ("GOOSE_THINKING_EFFORT", None::<&str>),
         ]);
 
-        let current =
-            goose::model::ModelConfig::new_or_fail("gpt-5.4-high").with_canonical_limits("openai");
+        let current = goose::model::ModelConfig::new_or_fail_with_config(
+            "gpt-5.4-high",
+            goose::config::Config::global(),
+        )
+        .with_canonical_limits_config("openai", goose::config::Config::global());
         assert_eq!(current.model_name, "gpt-5.4");
         assert_eq!(
-            current.thinking_effort(),
+            current.thinking_effort_with_config(goose::config::Config::global()),
             Some(goose::model::ThinkingEffort::High)
         );
 
         let switched = build_switched_model_config("openai", "gpt-5.4", &current).unwrap();
 
         assert_eq!(switched.model_name, current.model_name);
-        assert_ne!(switched.thinking_effort(), current.thinking_effort());
+        assert_ne!(
+            switched.thinking_effort_with_config(goose::config::Config::global()),
+            current.thinking_effort_with_config(goose::config::Config::global())
+        );
     }
 
     #[test]

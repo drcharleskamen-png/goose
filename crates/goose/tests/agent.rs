@@ -409,7 +409,7 @@ mod tests {
             }
 
             fn get_model_config(&self) -> ModelConfig {
-                ModelConfig::new("mock-model").unwrap()
+                ModelConfig::new_with_config("mock-model", goose::config::Config::global()).unwrap()
             }
 
             fn get_name(&self) -> &str {
@@ -582,7 +582,7 @@ mod tests {
             }
 
             fn get_model_config(&self) -> ModelConfig {
-                ModelConfig::new("mock-model").unwrap()
+                ModelConfig::new_with_config("mock-model", goose::config::Config::global()).unwrap()
             }
 
             fn get_name(&self) -> &str {
@@ -970,7 +970,7 @@ mod tests {
             }
 
             fn get_model_config(&self) -> ModelConfig {
-                ModelConfig::new("mock-model").unwrap()
+                ModelConfig::new_with_config("mock-model", goose::config::Config::global()).unwrap()
             }
 
             fn get_name(&self) -> &str {
@@ -1199,7 +1199,7 @@ mod tests {
             }
 
             fn get_model_config(&self) -> ModelConfig {
-                ModelConfig::new("mock-model").unwrap()
+                ModelConfig::new_with_config("mock-model", goose::config::Config::global()).unwrap()
             }
 
             fn get_name(&self) -> &str {
@@ -1436,7 +1436,7 @@ mod tests {
             }
 
             fn get_model_config(&self) -> ModelConfig {
-                ModelConfig::new("mock-model").unwrap()
+                ModelConfig::new_with_config("mock-model", goose::config::Config::global()).unwrap()
             }
 
             fn get_name(&self) -> &str {

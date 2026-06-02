@@ -1212,9 +1212,15 @@ mod tests {
     fn make_provider() -> ClaudeCodeProvider {
         ClaudeCodeProvider {
             command: PathBuf::from("claude"),
-            model: ModelConfig::new(CLAUDE_CODE_DEFAULT_MODEL)
-                .unwrap()
-                .with_canonical_limits(CLAUDE_CODE_PROVIDER_NAME),
+            model: ModelConfig::new_with_config(
+                CLAUDE_CODE_DEFAULT_MODEL,
+                crate::config::Config::global(),
+            )
+            .unwrap()
+            .with_canonical_limits_config(
+                CLAUDE_CODE_PROVIDER_NAME,
+                crate::config::Config::global(),
+            ),
             name: "claude-code".to_string(),
             mcp_config_file: None,
             cli_process: tokio::sync::OnceCell::new(),

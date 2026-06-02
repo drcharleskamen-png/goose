@@ -10,8 +10,8 @@ pub async fn test_provider_configuration(
     toolshim_enabled: bool,
     toolshim_model: Option<String>,
 ) -> Result<()> {
-    let model_config = ModelConfig::new(model)?
-        .with_canonical_limits(provider_name)
+    let model_config = ModelConfig::new_with_config(model, crate::config::Config::global())?
+        .with_canonical_limits_config(provider_name, crate::config::Config::global())
         .with_max_tokens(Some(50))
         .with_toolshim(toolshim_enabled)
         .with_toolshim_model(toolshim_model);

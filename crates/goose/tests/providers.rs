@@ -444,9 +444,10 @@ impl ProviderFixture {
 
     async fn test_image_content_support(&self) -> Result<()> {
         let image_config = match &self.image_model {
-            Some(model) => {
-                Some(goose::model::ModelConfig::new(model)?.with_canonical_limits(&self.name))
-            }
+            Some(model) => Some(
+                goose::model::ModelConfig::new_with_config(model, goose::config::Config::global())?
+                    .with_canonical_limits_config(&self.name, goose::config::Config::global()),
+            ),
             None => None,
         };
         let response = self
@@ -467,7 +468,9 @@ impl ProviderFixture {
     async fn test_model_switch(&self) -> Result<()> {
         let default = &self.provider.get_model_config().model_name;
         let alt = self.model_switch_name.as_deref().unwrap();
-        let alt_config = goose::model::ModelConfig::new(alt)?.with_canonical_limits(&self.name);
+        let alt_config =
+            goose::model::ModelConfig::new_with_config(alt, goose::config::Config::global())?
+                .with_canonical_limits_config(&self.name, goose::config::Config::global());
 
         let message = Message::user().with_text("Just say hello!");
         let (response, _) = self

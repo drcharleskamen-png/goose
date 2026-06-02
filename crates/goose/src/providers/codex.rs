@@ -645,8 +645,10 @@ impl ProviderDef for CodexProvider {
             let command: String = config.get_codex_command().unwrap_or_default().into();
             let resolved_command = SearchPaths::builder().with_npm().resolve(command)?;
 
-            let reasoning_effort =
-                Self::map_thinking_effort(&model.model_name, model.thinking_effort());
+            let reasoning_effort = Self::map_thinking_effort(
+                &model.model_name,
+                model.thinking_effort_with_config(crate::config::Config::global()),
+            );
 
             // Get skip_git_check from config, default to false
             let skip_git_check = config
@@ -933,7 +935,8 @@ mod tests {
     fn test_parse_response_plain_text() {
         let provider = CodexProvider {
             command: PathBuf::from("codex"),
-            model: ModelConfig::new("gpt-5.2-codex").unwrap(),
+            model: ModelConfig::new_with_config("gpt-5.2-codex", crate::config::Config::global())
+                .unwrap(),
             name: "codex".to_string(),
             reasoning_effort: Some("high".to_string()),
             skip_git_check: false,
@@ -954,7 +957,8 @@ mod tests {
     fn test_parse_response_json_events() {
         let provider = CodexProvider {
             command: PathBuf::from("codex"),
-            model: ModelConfig::new("gpt-5.2-codex").unwrap(),
+            model: ModelConfig::new_with_config("gpt-5.2-codex", crate::config::Config::global())
+                .unwrap(),
             name: "codex".to_string(),
             reasoning_effort: Some("high".to_string()),
             skip_git_check: false,
@@ -988,7 +992,8 @@ mod tests {
     fn test_parse_response_empty() {
         let provider = CodexProvider {
             command: PathBuf::from("codex"),
-            model: ModelConfig::new("gpt-5.2-codex").unwrap(),
+            model: ModelConfig::new_with_config("gpt-5.2-codex", crate::config::Config::global())
+                .unwrap(),
             name: "codex".to_string(),
             reasoning_effort: Some("high".to_string()),
             skip_git_check: false,
@@ -1037,7 +1042,8 @@ mod tests {
     fn test_parse_response_item_completed() {
         let provider = CodexProvider {
             command: PathBuf::from("codex"),
-            model: ModelConfig::new("gpt-5.2-codex").unwrap(),
+            model: ModelConfig::new_with_config("gpt-5.2-codex", crate::config::Config::global())
+                .unwrap(),
             name: "codex".to_string(),
             reasoning_effort: Some("high".to_string()),
             skip_git_check: false,
@@ -1063,7 +1069,8 @@ mod tests {
     fn test_parse_response_turn_completed_usage() {
         let provider = CodexProvider {
             command: PathBuf::from("codex"),
-            model: ModelConfig::new("gpt-5.2-codex").unwrap(),
+            model: ModelConfig::new_with_config("gpt-5.2-codex", crate::config::Config::global())
+                .unwrap(),
             name: "codex".to_string(),
             reasoning_effort: Some("high".to_string()),
             skip_git_check: false,
@@ -1136,7 +1143,8 @@ mod tests {
     fn test_parse_response_error_event(lines: &[&str], expected: ProviderError) {
         let provider = CodexProvider {
             command: PathBuf::from("codex"),
-            model: ModelConfig::new("gpt-5.2-codex").unwrap(),
+            model: ModelConfig::new_with_config("gpt-5.2-codex", crate::config::Config::global())
+                .unwrap(),
             name: "codex".to_string(),
             reasoning_effort: Some("high".to_string()),
             skip_git_check: false,
@@ -1153,7 +1161,8 @@ mod tests {
     fn test_parse_response_skips_reasoning() {
         let provider = CodexProvider {
             command: PathBuf::from("codex"),
-            model: ModelConfig::new("gpt-5.2-codex").unwrap(),
+            model: ModelConfig::new_with_config("gpt-5.2-codex", crate::config::Config::global())
+                .unwrap(),
             name: "codex".to_string(),
             reasoning_effort: Some("high".to_string()),
             skip_git_check: false,
@@ -1280,7 +1289,8 @@ mod tests {
     fn test_parse_response_multiple_agent_messages() {
         let provider = CodexProvider {
             command: PathBuf::from("codex"),
-            model: ModelConfig::new("gpt-5.2-codex").unwrap(),
+            model: ModelConfig::new_with_config("gpt-5.2-codex", crate::config::Config::global())
+                .unwrap(),
             name: "codex".to_string(),
             reasoning_effort: Some("high".to_string()),
             skip_git_check: false,

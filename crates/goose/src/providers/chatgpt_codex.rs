@@ -233,7 +233,7 @@ fn reasoning_effort_for_config(model_config: &ModelConfig) -> Option<String> {
     use crate::model::ThinkingEffort;
 
     model_config
-        .thinking_effort()
+        .thinking_effort_with_config(crate::config::Config::global())
         .map(|effort| {
             let valid_levels = reasoning_levels_for_model(&model_config.model_name);
             let preferred_levels: &[&str] = match effort {
@@ -1210,7 +1210,8 @@ mod tests {
     fn test_create_codex_request_reasoning_effort_from_unified_thinking() {
         let mut params = std::collections::HashMap::new();
         params.insert("thinking_effort".to_string(), json!("max"));
-        let mut config = ModelConfig::new("gpt-5.3-codex").unwrap();
+        let mut config =
+            ModelConfig::new_with_config("gpt-5.3-codex", crate::config::Config::global()).unwrap();
         config.request_params = Some(params);
 
         let payload = create_codex_request(&config, "sys", &[], &[]).unwrap();
@@ -1222,7 +1223,8 @@ mod tests {
     fn test_create_codex_request_caps_unified_thinking_to_supported_level() {
         let mut params = std::collections::HashMap::new();
         params.insert("thinking_effort".to_string(), json!("max"));
-        let mut config = ModelConfig::new("unknown-model").unwrap();
+        let mut config =
+            ModelConfig::new_with_config("unknown-model", crate::config::Config::global()).unwrap();
         config.request_params = Some(params);
 
         let payload = create_codex_request(&config, "sys", &[], &[]).unwrap();
@@ -1234,7 +1236,8 @@ mod tests {
     fn test_create_codex_request_off_omits_reasoning_for_codex_models() {
         let mut params = std::collections::HashMap::new();
         params.insert("thinking_effort".to_string(), json!("off"));
-        let mut config = ModelConfig::new("gpt-5.2-codex").unwrap();
+        let mut config =
+            ModelConfig::new_with_config("gpt-5.2-codex", crate::config::Config::global()).unwrap();
         config.request_params = Some(params);
 
         let payload = create_codex_request(&config, "sys", &[], &[]).unwrap();
@@ -1402,7 +1405,8 @@ mod tests {
 
     #[test]
     fn test_gpt53_preamble_injected() {
-        let model = ModelConfig::new("gpt-5.3-codex").unwrap();
+        let model =
+            ModelConfig::new_with_config("gpt-5.3-codex", crate::config::Config::global()).unwrap();
         let payload = create_codex_request(&model, "system prompt", &[], &[]).unwrap();
         let instructions = payload["instructions"].as_str().unwrap();
         assert!(instructions.contains(GPT_53_CODEX_TOOL_PREAMBLE));
@@ -1411,7 +1415,8 @@ mod tests {
 
     #[test]
     fn test_other_models_no_preamble() {
-        let model = ModelConfig::new("gpt-5.4").unwrap();
+        let model =
+            ModelConfig::new_with_config("gpt-5.4", crate::config::Config::global()).unwrap();
         let payload = create_codex_request(&model, "system prompt", &[], &[]).unwrap();
         let instructions = payload["instructions"].as_str().unwrap();
         assert_eq!(instructions, "system prompt");

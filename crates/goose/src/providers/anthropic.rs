@@ -66,7 +66,11 @@ pub struct AnthropicProvider {
 
 impl AnthropicProvider {
     pub async fn from_env(model: ModelConfig) -> Result<Self> {
-        let model = model.with_fast(ANTHROPIC_DEFAULT_FAST_MODEL, ANTHROPIC_PROVIDER_NAME)?;
+        let model = model.with_fast_config(
+            ANTHROPIC_DEFAULT_FAST_MODEL,
+            ANTHROPIC_PROVIDER_NAME,
+            crate::config::Config::global(),
+        )?;
 
         let config = crate::config::Config::global();
         let api_key: String = config.get_secret("ANTHROPIC_API_KEY")?;
@@ -153,7 +157,11 @@ impl AnthropicProvider {
         }
 
         let model = if let Some(ref fast_model_name) = config.fast_model {
-            model.with_fast(fast_model_name, &config.name)?
+            model.with_fast_config(
+                fast_model_name,
+                &config.name,
+                crate::config::Config::global(),
+            )?
         } else {
             model
         };
@@ -408,7 +416,10 @@ mod tests {
             .unwrap();
         AnthropicProvider {
             api_client,
-            model: ModelConfig::new_or_fail("claude-test"),
+            model: ModelConfig::new_or_fail_with_config(
+                "claude-test",
+                crate::config::Config::global(),
+            ),
             supports_streaming: true,
             name: "custom_anthropic".to_string(),
             custom_models,
@@ -467,10 +478,12 @@ mod tests {
     #[test]
     fn from_custom_config_rejects_static_only_without_models() {
         let config = base_declarative_config(vec![], Some(false));
-        let err =
-            AnthropicProvider::from_custom_config(ModelConfig::new_or_fail("claude-test"), config)
-                .err()
-                .expect("expected construction error for dynamic_models: false with empty models");
+        let err = AnthropicProvider::from_custom_config(
+            ModelConfig::new_or_fail_with_config("claude-test", crate::config::Config::global()),
+            config,
+        )
+        .err()
+        .expect("expected construction error for dynamic_models: false with empty models");
         let msg = err.to_string();
         assert!(
             msg.contains("dynamic_models: false"),

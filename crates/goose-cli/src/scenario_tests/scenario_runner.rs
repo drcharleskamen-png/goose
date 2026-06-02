@@ -188,7 +188,8 @@ where
 
         let inner_provider = create(
             &factory_name,
-            ModelConfig::new(config.model_name)?.with_canonical_limits(&factory_name),
+            ModelConfig::new_with_config(config.model_name, goose::config::Config::global())?
+                .with_canonical_limits_config(&factory_name, goose::config::Config::global()),
             Vec::new(),
         )
         .await?;

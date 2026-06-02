@@ -47,15 +47,17 @@ pub struct AnthropicFormatOptions {
 impl AnthropicFormatOptions {
     fn for_model(self, model_config: &ModelConfig) -> Self {
         let preserve_thinking_context = model_config
-            .get_config_param::<bool>(
+            .get_config_param_with_config::<bool, _>(
                 "preserve_thinking_context",
                 "ANTHROPIC_PRESERVE_THINKING_CONTEXT",
+                crate::config::Config::global(),
             )
             .unwrap_or(self.preserve_thinking_context);
         let preserve_unsigned_thinking = model_config
-            .get_config_param::<bool>(
+            .get_config_param_with_config::<bool, _>(
                 "preserve_unsigned_thinking",
                 "ANTHROPIC_PRESERVE_UNSIGNED_THINKING",
+                crate::config::Config::global(),
             )
             .unwrap_or(self.preserve_unsigned_thinking)
             || preserve_thinking_context;
@@ -79,7 +81,7 @@ pub fn thinking_type(model_config: &ModelConfig) -> ThinkingType {
     }
 
     let is_adaptive_model = supports_adaptive_thinking(&model_config.model_name);
-    let effort = model_config.thinking_effort();
+    let effort = model_config.thinking_effort_with_config(crate::config::Config::global());
 
     if effort.is_none() && legacy_thinking_budget_tokens().is_some() {
         return ThinkingType::Enabled;
@@ -508,7 +510,7 @@ pub fn get_usage(data: &Value) -> Result<Usage> {
 
 pub fn thinking_effort(model_config: &ModelConfig) -> ThinkingEffort {
     model_config
-        .thinking_effort()
+        .thinking_effort_with_config(crate::config::Config::global())
         .unwrap_or(ThinkingEffort::High)
 }
 
@@ -527,7 +529,7 @@ pub fn thinking_budget_tokens(model_config: &ModelConfig) -> i32 {
     }
 
     let effort = model_config
-        .thinking_effort()
+        .thinking_effort_with_config(crate::config::Config::global())
         .unwrap_or(ThinkingEffort::High);
     match effort {
         ThinkingEffort::Off => 1024,

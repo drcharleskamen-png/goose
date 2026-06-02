@@ -99,7 +99,8 @@ fn reasoning_effort_for_openrouter(effort: ThinkingEffort) -> &'static str {
 }
 
 pub fn apply_reasoning_config(payload: &mut Value, model_config: &ModelConfig) {
-    let Some(effort) = model_config.thinking_effort() else {
+    let Some(effort) = model_config.thinking_effort_with_config(crate::config::Config::global())
+    else {
         return;
     };
 
@@ -189,7 +190,8 @@ mod tests {
             "messages": [],
             "reasoning_effort": "high"
         });
-        let mut model_config = ModelConfig::new_or_fail("openai/gpt-5");
+        let mut model_config =
+            ModelConfig::new_or_fail_with_config("openai/gpt-5", crate::config::Config::global());
         let mut params = HashMap::new();
         params.insert("thinking_effort".to_string(), json!("max"));
         model_config.request_params = Some(params);
@@ -206,7 +208,8 @@ mod tests {
             "model": "x-ai/grok-4",
             "messages": []
         });
-        let mut model_config = ModelConfig::new_or_fail("x-ai/grok-4");
+        let mut model_config =
+            ModelConfig::new_or_fail_with_config("x-ai/grok-4", crate::config::Config::global());
         let mut params = HashMap::new();
         params.insert("thinking_effort".to_string(), json!("high"));
         model_config.request_params = Some(params);
@@ -223,7 +226,10 @@ mod tests {
             "model": "anthropic/claude-sonnet-4",
             "messages": []
         });
-        let mut model_config = ModelConfig::new_or_fail("anthropic/claude-sonnet-4");
+        let mut model_config = ModelConfig::new_or_fail_with_config(
+            "anthropic/claude-sonnet-4",
+            crate::config::Config::global(),
+        );
         let mut params = HashMap::new();
         params.insert("thinking_effort".to_string(), json!("high"));
         model_config.request_params = Some(params);
@@ -239,7 +245,8 @@ mod tests {
             "model": "openai/gpt-4o",
             "messages": []
         });
-        let mut model_config = ModelConfig::new_or_fail("openai/gpt-4o");
+        let mut model_config =
+            ModelConfig::new_or_fail_with_config("openai/gpt-4o", crate::config::Config::global());
         let mut params = HashMap::new();
         params.insert("thinking_effort".to_string(), json!("high"));
         model_config.request_params = Some(params);
@@ -256,7 +263,8 @@ mod tests {
             "model": "x-ai/grok-4",
             "messages": []
         });
-        let mut model_config = ModelConfig::new_or_fail("x-ai/grok-4");
+        let mut model_config =
+            ModelConfig::new_or_fail_with_config("x-ai/grok-4", crate::config::Config::global());
         let mut params = HashMap::new();
         params.insert("thinking_effort".to_string(), json!("off"));
         model_config.request_params = Some(params);

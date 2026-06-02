@@ -1257,7 +1257,7 @@ pub fn create_request_with_options(
     let is_reasoning_model = is_openai_responses_model(&model_name);
     let reasoning_effort = if is_reasoning_model {
         model_config
-            .thinking_effort()
+            .thinking_effort_with_config(crate::config::Config::global())
             .map_or(legacy_reasoning_effort, |effort| {
                 openai_reasoning_effort_for_thinking(&model_name, effort)
             })

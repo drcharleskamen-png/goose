@@ -73,9 +73,10 @@ async fn check_provider(
         }
     };
 
-    let model_config = goose::model::ModelConfig::new(&model)
-        .map_err(|e| ProviderCheckError::InvalidModel(e.to_string()))?
-        .with_canonical_limits(&provider);
+    let model_config =
+        goose::model::ModelConfig::new_with_config(&model, goose::config::Config::global())
+            .map_err(|e| ProviderCheckError::InvalidModel(e.to_string()))?
+            .with_canonical_limits_config(&provider, goose::config::Config::global());
 
     let provider_client = goose::providers::create(&provider, model_config, Vec::new())
         .await

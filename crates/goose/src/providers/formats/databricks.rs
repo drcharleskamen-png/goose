@@ -594,7 +594,7 @@ pub fn create_request(
     let is_openai_reasoning_model = is_openai_responses_model(&model_name);
     let reasoning_effort = if is_openai_reasoning_model {
         model_config
-            .thinking_effort()
+            .thinking_effort_with_config(crate::config::Config::global())
             .map_or(legacy_reasoning_effort, |effort| {
                 openai_reasoning_effort_for_thinking(&model_name, effort)
             })
@@ -1181,7 +1181,10 @@ mod tests {
 
     #[test]
     fn test_create_request_adaptive_thinking_for_46_models() -> anyhow::Result<()> {
-        let mut model_config = ModelConfig::new_or_fail("databricks-claude-opus-4-6");
+        let mut model_config = ModelConfig::new_or_fail_with_config(
+            "databricks-claude-opus-4-6",
+            crate::config::Config::global(),
+        );
         model_config.max_tokens = Some(4096);
         let mut params = std::collections::HashMap::new();
         params.insert("thinking_effort".to_string(), serde_json::json!("low"));
@@ -1200,7 +1203,10 @@ mod tests {
 
     #[test]
     fn test_create_request_enabled_thinking_with_budget() -> anyhow::Result<()> {
-        let mut model_config = ModelConfig::new_or_fail("databricks-claude-3-7-sonnet");
+        let mut model_config = ModelConfig::new_or_fail_with_config(
+            "databricks-claude-3-7-sonnet",
+            crate::config::Config::global(),
+        );
         model_config.max_tokens = Some(4096);
         let mut params = std::collections::HashMap::new();
         params.insert("thinking_effort".to_string(), serde_json::json!("high"));
@@ -1225,7 +1231,10 @@ mod tests {
             ("high", 16000),
             ("max", 32000),
         ] {
-            let mut model_config = ModelConfig::new_or_fail("databricks-claude-3-7-sonnet");
+            let mut model_config = ModelConfig::new_or_fail_with_config(
+                "databricks-claude-3-7-sonnet",
+                crate::config::Config::global(),
+            );
             model_config.max_tokens = Some(4096);
             let mut params = std::collections::HashMap::new();
             params.insert("thinking_effort".to_string(), serde_json::json!(effort));

@@ -149,8 +149,11 @@ impl DatabricksProvider {
             token_cache,
             instance_id: Self::resolve_instance_id(),
         };
-        provider.model =
-            model.with_fast(DATABRICKS_DEFAULT_FAST_MODEL, DATABRICKS_PROVIDER_NAME)?;
+        provider.model = model.with_fast_config(
+            DATABRICKS_DEFAULT_FAST_MODEL,
+            DATABRICKS_PROVIDER_NAME,
+            crate::config::Config::global(),
+        )?;
         Ok(provider)
     }
 
@@ -462,12 +465,17 @@ impl DatabricksProvider {
 
     fn model_info_from_endpoint(info: DatabricksEndpointInfo) -> ModelInfo {
         let context_model = info.upstream_model_name.as_deref().unwrap_or(&info.name);
-        let context_limit = ModelConfig::new_or_fail(context_model)
-            .with_canonical_limits(DATABRICKS_PROVIDER_NAME)
-            .context_limit();
-        let reasoning = info
-            .reasoning
-            .unwrap_or_else(|| ModelConfig::new_or_fail(context_model).is_reasoning_model());
+        let context_limit =
+            ModelConfig::new_or_fail_with_config(context_model, crate::config::Config::global())
+                .with_canonical_limits_config(
+                    DATABRICKS_PROVIDER_NAME,
+                    crate::config::Config::global(),
+                )
+                .context_limit();
+        let reasoning = info.reasoning.unwrap_or_else(|| {
+            ModelConfig::new_or_fail_with_config(context_model, crate::config::Config::global())
+                .is_reasoning_model()
+        });
 
         ModelInfo {
             name: info.name,
@@ -617,9 +625,15 @@ impl Provider for DatabricksProvider {
                 create_responses_request(request_model_config, system, messages, tools)?;
             payload["model"] = Value::String(endpoint_name.clone());
             if payload.get("reasoning").is_none() {
-                if let Some(effort) = model_config.thinking_effort().and_then(|effort| {
-                    super::utils::openai_reasoning_effort_for_thinking(effective_model_name, effort)
-                }) {
+                if let Some(effort) = model_config
+                    .thinking_effort_with_config(crate::config::Config::global())
+                    .and_then(|effort| {
+                        super::utils::openai_reasoning_effort_for_thinking(
+                            effective_model_name,
+                            effort,
+                        )
+                    })
+                {
                     payload.as_object_mut().unwrap().insert(
                         "reasoning".to_string(),
                         json!({
@@ -885,7 +899,10 @@ mod tests {
             .unwrap(),
             host: "https://example.com".to_string(),
             auth: DatabricksAuth::Token("fake".into()),
-            model: ModelConfig::new_or_fail("databricks-gpt-5.4"),
+            model: ModelConfig::new_or_fail_with_config(
+                "databricks-gpt-5.4",
+                crate::config::Config::global(),
+            ),
             image_format: ImageFormat::OpenAi,
             retry_config: RetryConfig::default(),
             fast_retry_config: RetryConfig::new(0, 0, 1.0, 0),

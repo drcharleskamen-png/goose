@@ -41,7 +41,7 @@ fn create_test_provider(mock_server_url: &str) -> Box<dyn Provider> {
         AuthMethod::BearerToken("test-key".to_string()),
     )
     .unwrap();
-    let model = ModelConfig::new_or_fail("gpt-5-nano");
+    let model = ModelConfig::new_or_fail_with_config("gpt-5-nano", goose::config::Config::global());
     Box::new(OpenAiProvider::new(api_client, model))
 }
 

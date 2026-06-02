@@ -660,7 +660,7 @@ mod tests {
         assert!(!logs_dir.exists(), "logs dir should not exist yet");
 
         let log = RequestLog::start(
-            &ModelConfig::new("test").unwrap(),
+            &ModelConfig::new_with_config("test", crate::config::Config::global()).unwrap(),
             &json!({"model": "test"}),
         )
         .expect("RequestLog::start should create missing logs dir");

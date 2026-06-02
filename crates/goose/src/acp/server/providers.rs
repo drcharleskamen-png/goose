@@ -445,8 +445,11 @@ impl GooseAcpAgent {
         let entry = crate::providers::get_from_registry(&req.provider_id)
             .await
             .invalid_params_err_ctx("Unknown provider")?;
-        let model_config = crate::model::ModelConfig::new(&entry.metadata().default_model)
-            .invalid_params_err_ctx("Invalid default model")?;
+        let model_config = crate::model::ModelConfig::new_with_config(
+            &entry.metadata().default_model,
+            crate::config::Config::global(),
+        )
+        .invalid_params_err_ctx("Invalid default model")?;
         let provider = self
             .create_provider(&req.provider_id, model_config, Vec::new(), None)
             .await
@@ -719,9 +722,11 @@ impl GooseAcpAgent {
                 let mut refresh_guard = provider_inventory.refresh_guard(&identity);
                 let provider_result = AssertUnwindSafe(async {
                     let metadata = crate::providers::get_from_registry(&provider_id).await?;
-                    let model_config =
-                        crate::model::ModelConfig::new(&metadata.metadata().default_model)?
-                            .with_canonical_limits(&provider_id);
+                    let model_config = crate::model::ModelConfig::new_with_config(
+                        &metadata.metadata().default_model,
+                        crate::config::Config::global(),
+                    )?
+                    .with_canonical_limits_config(&provider_id, crate::config::Config::global());
                     provider_factory(provider_id.clone(), model_config, Vec::new(), None).await
                 })
                 .catch_unwind()

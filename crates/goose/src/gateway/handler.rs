@@ -168,7 +168,9 @@ impl GatewayHandler {
             update = update.provider_name(provider);
         }
         if let Ok(model_name) = config.get_goose_model() {
-            if let Ok(model_config) = ModelConfig::new(&model_name) {
+            if let Ok(model_config) =
+                ModelConfig::new_with_config(&model_name, crate::config::Config::global())
+            {
                 update = update.model_config(model_config);
             }
         }
@@ -254,7 +256,9 @@ impl GatewayHandler {
             update = update.provider_name(provider);
         }
         if let Some(ref model_name) = current_model_name {
-            if let Ok(model_config) = ModelConfig::new(model_name) {
+            if let Ok(model_config) =
+                ModelConfig::new_with_config(model_name, crate::config::Config::global())
+            {
                 update = update.model_config(model_config);
             }
         }

@@ -212,7 +212,11 @@ impl OpenAiProvider {
             .map(|h| h == "api.openai.com" || h.ends_with(".api.openai.com"))
             .unwrap_or(false);
         let model = if is_openai {
-            model.with_fast(OPEN_AI_DEFAULT_FAST_MODEL, OPEN_AI_PROVIDER_NAME)?
+            model.with_fast_config(
+                OPEN_AI_DEFAULT_FAST_MODEL,
+                OPEN_AI_PROVIDER_NAME,
+                crate::config::Config::global(),
+            )?
         } else {
             model
         };
@@ -414,7 +418,11 @@ impl OpenAiProvider {
         }
 
         let model = if let Some(ref fast_model_name) = config.fast_model {
-            model.with_fast(fast_model_name, &config.name)?
+            model.with_fast_config(
+                fast_model_name,
+                &config.name,
+                crate::config::Config::global(),
+            )?
         } else {
             model
         };
@@ -969,7 +977,10 @@ mod tests {
             base_path: "v1/chat/completions".to_string(),
             organization: None,
             project: None,
-            model: ModelConfig::new_or_fail("test-model"),
+            model: ModelConfig::new_or_fail_with_config(
+                "test-model",
+                crate::config::Config::global(),
+            ),
             custom_headers: None,
             supports_streaming: true,
             name: name.to_string(),
@@ -1268,7 +1279,10 @@ mod tests {
             base_path: "v1/chat/completions".to_string(),
             organization: None,
             project: None,
-            model: ModelConfig::new_or_fail("test-model"),
+            model: ModelConfig::new_or_fail_with_config(
+                "test-model",
+                crate::config::Config::global(),
+            ),
             custom_headers: None,
             supports_streaming: true,
             name: "custom_test".to_string(),
@@ -1329,11 +1343,11 @@ mod tests {
     #[test]
     fn from_custom_config_rejects_static_only_without_models() {
         let config = base_declarative_config(vec![], Some(false));
-        let err =
-            OpenAiProvider::from_custom_config(ModelConfig::new_or_fail("test-model"), config)
-                .expect_err(
-                    "expected construction error for dynamic_models: false with empty models",
-                );
+        let err = OpenAiProvider::from_custom_config(
+            ModelConfig::new_or_fail_with_config("test-model", crate::config::Config::global()),
+            config,
+        )
+        .expect_err("expected construction error for dynamic_models: false with empty models");
         let msg = err.to_string();
         assert!(
             msg.contains("dynamic_models: false"),

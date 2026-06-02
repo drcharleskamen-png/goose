@@ -558,7 +558,7 @@ pub fn create_responses_request(
                 .or(legacy_reasoning_effort)
         } else {
             model_config
-                .thinking_effort()
+                .thinking_effort_with_config(crate::config::Config::global())
                 .and_then(|effort| openai_reasoning_effort_for_thinking(&model_name, effort))
         }
     } else {
@@ -1329,7 +1329,8 @@ mod tests {
 
     #[test]
     fn test_responses_request_with_normalized_effort_suffix() {
-        let model_config = ModelConfig::new("o3-mini-high").unwrap();
+        let model_config =
+            ModelConfig::new_with_config("o3-mini-high", crate::config::Config::global()).unwrap();
 
         let result = create_responses_request(&model_config, "You are helpful.", &[], &[]).unwrap();
 

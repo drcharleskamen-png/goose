@@ -1025,15 +1025,18 @@ async fn resolve_provider_and_model_from_config(
                 .await
                 .map_err(|e| e.to_string())?;
             let default_model = &entry.metadata().default_model;
-            crate::model::ModelConfig::new(default_model)
-                .map_err(|e| e.to_string())?
-                .with_canonical_limits(&provider_name)
+            crate::model::ModelConfig::new_with_config(
+                default_model,
+                crate::config::Config::global(),
+            )
+            .map_err(|e| e.to_string())?
+            .with_canonical_limits_config(&provider_name, crate::config::Config::global())
         }
         None => {
             let model_id = config.get_goose_model().map_err(|e| e.to_string())?;
-            crate::model::ModelConfig::new(&model_id)
+            crate::model::ModelConfig::new_with_config(&model_id, crate::config::Config::global())
                 .map_err(|e| e.to_string())?
-                .with_canonical_limits(&provider_name)
+                .with_canonical_limits_config(&provider_name, crate::config::Config::global())
         }
     };
     Ok((provider_name, model_config))
@@ -3278,9 +3281,10 @@ impl GooseAcpAgent {
         let current_model_config = current_provider.get_model_config();
         let extensions =
             EnabledExtensionsState::for_session(&self.session_manager, session_id, &config).await;
-        let model_config = crate::model::ModelConfig::new(model_id)
-            .invalid_params_err_ctx("Invalid model config")?
-            .with_canonical_limits(&provider_name);
+        let model_config =
+            crate::model::ModelConfig::new_with_config(model_id, crate::config::Config::global())
+                .invalid_params_err_ctx("Invalid model config")?
+                .with_canonical_limits_config(&provider_name, crate::config::Config::global());
         let model_config =
             with_preserved_session_request_params(model_config, Some(&current_model_config), None);
         let session = self
@@ -3413,10 +3417,14 @@ impl GooseAcpAgent {
             current_model
         };
         let model = model_name.unwrap_or(&default_model);
-        let mut model_config = crate::model::ModelConfig::new(model)
-            .invalid_params_err_ctx("Invalid model config")?
-            .with_canonical_limits(&resolved_provider_name)
-            .with_context_limit(context_limit);
+        let mut model_config =
+            crate::model::ModelConfig::new_with_config(model, crate::config::Config::global())
+                .invalid_params_err_ctx("Invalid model config")?
+                .with_canonical_limits_config(
+                    &resolved_provider_name,
+                    crate::config::Config::global(),
+                )
+                .with_context_limit(context_limit);
         model_config = with_preserved_session_request_params(
             model_config,
             (!is_changing_provider).then_some(&current_model_config),

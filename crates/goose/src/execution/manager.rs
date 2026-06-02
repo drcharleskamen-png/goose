@@ -572,7 +572,7 @@ mod tests {
             }
 
             fn get_model_config(&self) -> ModelConfig {
-                ModelConfig::new_or_fail("test-model")
+                ModelConfig::new_or_fail_with_config("test-model", crate::config::Config::global())
             }
 
             async fn stream(

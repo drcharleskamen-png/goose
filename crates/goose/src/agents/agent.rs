@@ -2509,9 +2509,12 @@ impl Agent {
                     .get_goose_model()
                     .ok()
                     .ok_or_else(|| anyhow!("Could not configure agent: missing model"))?;
-                crate::model::ModelConfig::new(&model_name)
-                    .map_err(|e| anyhow!("Could not configure agent: invalid model {}", e))?
-                    .with_canonical_limits(&provider_name)
+                crate::model::ModelConfig::new_with_config(
+                    &model_name,
+                    crate::config::Config::global(),
+                )
+                .map_err(|e| anyhow!("Could not configure agent: invalid model {}", e))?
+                .with_canonical_limits_config(&provider_name, crate::config::Config::global())
             }
         };
 
@@ -2548,9 +2551,12 @@ impl Agent {
                 .get_goose_model()
                 .ok()
                 .ok_or_else(|| anyhow!("Could not configure fallback provider: missing model"))?;
-            let fallback_model_config = crate::model::ModelConfig::new(&fallback_model_name)
-                .map_err(|e| anyhow!("Could not configure fallback provider: invalid model {}", e))?
-                .with_canonical_limits(&fallback_provider_name);
+            let fallback_model_config = crate::model::ModelConfig::new_with_config(
+                &fallback_model_name,
+                crate::config::Config::global(),
+            )
+            .map_err(|e| anyhow!("Could not configure fallback provider: invalid model {}", e))?
+            .with_canonical_limits_config(&fallback_provider_name, crate::config::Config::global());
 
             let fallback_provider = crate::providers::create(
                 &fallback_provider_name,
@@ -2957,7 +2963,8 @@ mod tests {
             "test-action-required"
         }
         fn get_model_config(&self) -> crate::model::ModelConfig {
-            crate::model::ModelConfig::new("test").unwrap()
+            crate::model::ModelConfig::new_with_config("test", crate::config::Config::global())
+                .unwrap()
         }
         async fn stream(
             &self,
@@ -3157,7 +3164,11 @@ exit 0
         }
 
         fn get_model_config(&self) -> crate::model::ModelConfig {
-            crate::model::ModelConfig::new("mock-model").unwrap()
+            crate::model::ModelConfig::new_with_config(
+                "mock-model",
+                crate::config::Config::global(),
+            )
+            .unwrap()
         }
 
         fn get_name(&self) -> &str {

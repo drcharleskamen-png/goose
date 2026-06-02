@@ -203,7 +203,7 @@ impl Connection for AcpProviderConnection {
         };
         let provider = AcpProvider::connect_with_transport(
             "acp-test".to_string(),
-            ModelConfig::new(TEST_MODEL).unwrap(),
+            ModelConfig::new_with_config(TEST_MODEL, goose::config::Config::global()).unwrap(),
             goose_mode,
             provider_config,
             transport,

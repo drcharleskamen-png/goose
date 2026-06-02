@@ -680,7 +680,8 @@ mod tests {
             )
             .await?;
 
-        let model_config = ModelConfig::new("test-model").unwrap();
+        let model_config =
+            ModelConfig::new_with_config("test-model", crate::config::Config::global()).unwrap();
         let provider = std::sync::Arc::new(MockProvider { model_config });
         agent.update_provider(provider, &session.id).await?;
 

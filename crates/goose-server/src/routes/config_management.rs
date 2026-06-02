@@ -360,7 +360,9 @@ pub async fn get_provider_models(
         )));
     }
 
-    let model_config = ModelConfig::new(&metadata.default_model)?.with_canonical_limits(&name);
+    let model_config =
+        ModelConfig::new_with_config(&metadata.default_model, goose::config::Config::global())?
+            .with_canonical_limits_config(&name, goose::config::Config::global());
     let provider = goose::providers::create(&name, model_config, Vec::new()).await?;
 
     let models_result = provider.fetch_recommended_model_info().await;
@@ -394,7 +396,8 @@ pub async fn resolve_provider_model_info(
         )));
     }
 
-    let model_config = ModelConfig::new(model)?.with_canonical_limits(name);
+    let model_config = ModelConfig::new_with_config(model, goose::config::Config::global())?
+        .with_canonical_limits_config(name, goose::config::Config::global());
     let provider = goose::providers::create(name, model_config.clone(), Vec::new()).await?;
     match provider.fetch_model_info(model).await {
         Ok(info) => Ok(info),
@@ -544,9 +547,10 @@ pub async fn get_canonical_model_info(
         model: query.model.clone(),
         context_limit: canonical_model.limit.context,
         max_output_tokens: canonical_model.limit.output,
-        reasoning: canonical_model
-            .reasoning
-            .unwrap_or_else(|| ModelConfig::new_or_fail(&query.model).is_reasoning_model()),
+        reasoning: canonical_model.reasoning.unwrap_or_else(|| {
+            ModelConfig::new_or_fail_with_config(&query.model, goose::config::Config::global())
+                .is_reasoning_model()
+        }),
         // Costs are per million tokens - client handles division for display
         input_token_cost: canonical_model.cost.input,
         output_token_cost: canonical_model.cost.output,
@@ -852,11 +856,11 @@ pub async fn configure_provider_oauth(
         )));
     }
 
-    let temp_model = ModelConfig::new("temp")
+    let temp_model = ModelConfig::new_with_config("temp", goose::config::Config::global())
         .map_err(|e| {
             ErrorResponse::bad_request(format!("Failed to create temporary model config: {}", e))
         })?
-        .with_canonical_limits(&provider_name);
+        .with_canonical_limits_config(&provider_name, goose::config::Config::global());
 
     // OAuth configuration does not use extensions.
     let provider = create(&provider_name, temp_model, Vec::new())
