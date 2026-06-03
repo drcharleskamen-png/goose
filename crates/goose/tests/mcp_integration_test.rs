@@ -24,6 +24,7 @@ use goose::providers::base::{
     ProviderUsage, Usage,
 };
 use goose::providers::errors::ProviderError;
+use goose::providers::mode::GooseProvider;
 use once_cell::sync::Lazy;
 use std::process::Command;
 
@@ -65,6 +66,9 @@ impl ProviderDef for MockProvider {
         Box::pin(async move { Ok(Self::new(model)) })
     }
 }
+
+#[async_trait]
+impl GooseProvider for MockProvider {}
 
 #[async_trait]
 impl Provider for MockProvider {
@@ -252,7 +256,8 @@ async fn test_replayed_session(
 
     let provider = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(MockProvider {
         model_config: ModelConfig::new("test-model").unwrap(),
-    }) as Arc<dyn Provider>)));
+    })
+        as Arc<dyn GooseProvider>)));
     let temp_dir = tempfile::tempdir().unwrap();
     let session_manager = Arc::new(goose::session::SessionManager::new(
         temp_dir.path().to_path_buf(),

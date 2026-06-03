@@ -387,6 +387,9 @@ mod tests {
         }
 
         #[async_trait]
+        impl goose::providers::mode::GooseProvider for MockToolProvider {}
+
+        #[async_trait]
         impl Provider for MockToolProvider {
             async fn stream(
                 &self,
@@ -554,6 +557,9 @@ mod tests {
                 Box::pin(async { Ok(Self::new()) })
             }
         }
+
+        #[async_trait]
+        impl goose::providers::mode::GooseProvider for SummarizationTestProvider {}
 
         #[async_trait]
         impl Provider for SummarizationTestProvider {
@@ -909,6 +915,9 @@ mod tests {
         }
 
         #[async_trait]
+        impl goose::providers::mode::GooseProvider for MultiStepProvider {}
+
+        #[async_trait]
         impl Provider for MultiStepProvider {
             async fn stream(
                 &self,
@@ -1179,6 +1188,9 @@ mod tests {
         }
 
         #[async_trait]
+        impl goose::providers::mode::GooseProvider for GoalTextProvider {}
+
+        #[async_trait]
         impl Provider for GoalTextProvider {
             async fn stream(
                 &self,
@@ -1411,6 +1423,9 @@ mod tests {
             input_tokens: i32,
             output_tokens: i32,
         }
+
+        #[async_trait]
+        impl goose::providers::mode::GooseProvider for FixedUsageProvider {}
 
         #[async_trait]
         impl Provider for FixedUsageProvider {

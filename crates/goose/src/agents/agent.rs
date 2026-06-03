@@ -2953,6 +2953,9 @@ mod tests {
     }
 
     #[async_trait::async_trait]
+    impl crate::providers::mode::GooseProvider for ActionRequiredProvider {}
+
+    #[async_trait::async_trait]
     impl crate::providers::base::Provider for ActionRequiredProvider {
         fn get_name(&self) -> &str {
             "test-action-required"
@@ -3140,6 +3143,9 @@ exit 0
             self.call_count.load(Ordering::SeqCst)
         }
     }
+
+    #[async_trait::async_trait]
+    impl crate::providers::mode::GooseProvider for CountingTextProvider {}
 
     #[async_trait::async_trait]
     impl crate::providers::base::Provider for CountingTextProvider {

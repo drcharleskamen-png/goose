@@ -22,6 +22,7 @@ use goose::providers::base::{
     stream_from_single_message, MessageStream, Provider, ProviderUsage, Usage,
 };
 use goose::providers::errors::ProviderError;
+use goose::providers::mode::GooseProvider;
 use goose_test_support::{McpFixture, FAKE_CODE, TEST_IMAGE_B64, TEST_MODEL};
 use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
@@ -63,6 +64,9 @@ struct NamingProvider {
 }
 
 #[async_trait::async_trait]
+impl GooseProvider for NamingProvider {}
+
+#[async_trait::async_trait]
 impl Provider for NamingProvider {
     fn get_name(&self) -> &str {
         "naming-test"
@@ -94,7 +98,9 @@ impl Provider for NamingProvider {
 
 fn naming_provider_factory() -> AcpProviderFactory {
     Arc::new(|_provider_name, model_config, _extensions, _working_dir| {
-        Box::pin(async move { Ok(Arc::new(NamingProvider { model_config }) as Arc<dyn Provider>) })
+        Box::pin(
+            async move { Ok(Arc::new(NamingProvider { model_config }) as Arc<dyn GooseProvider>) },
+        )
     })
 }
 

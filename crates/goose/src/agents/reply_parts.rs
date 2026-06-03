@@ -642,6 +642,9 @@ mod tests {
     }
 
     #[async_trait]
+    impl crate::providers::mode::GooseProvider for MockProvider {}
+
+    #[async_trait]
     impl Provider for MockProvider {
         fn get_name(&self) -> &str {
             "mock"

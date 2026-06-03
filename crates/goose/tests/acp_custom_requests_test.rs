@@ -11,6 +11,7 @@ use goose::acp::server::AcpProviderFactory;
 use goose::model::ModelConfig;
 use goose::providers::base::{MessageStream, Provider};
 use goose::providers::errors::ProviderError;
+use goose::providers::mode::GooseProvider;
 use goose_test_support::{EnforceSessionId, IgnoreSessionId};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -23,6 +24,9 @@ struct MockProvider {
     recommended_models: Vec<String>,
     supported_models: Vec<String>,
 }
+
+#[async_trait::async_trait]
+impl GooseProvider for MockProvider {}
 
 #[async_trait::async_trait]
 impl Provider for MockProvider {
@@ -69,7 +73,7 @@ fn mock_provider_factory() -> AcpProviderFactory {
                 model_config,
                 supported_models: recommended_models.clone(),
                 recommended_models,
-            }) as Arc<dyn Provider>)
+            }) as Arc<dyn GooseProvider>)
         })
     })
 }
@@ -140,7 +144,7 @@ fn test_new_session_passes_cwd_to_provider_factory() {
                         model_config,
                         recommended_models: Vec::new(),
                         supported_models: Vec::new(),
-                    }) as Arc<dyn Provider>)
+                    }) as Arc<dyn GooseProvider>)
                 })
             },
         );
@@ -188,7 +192,7 @@ fn test_load_session_passes_load_cwd_to_provider_factory() {
                         model_config,
                         recommended_models: Vec::new(),
                         supported_models: Vec::new(),
-                    }) as Arc<dyn Provider>)
+                    }) as Arc<dyn GooseProvider>)
                 })
             },
         );
@@ -697,7 +701,7 @@ fn test_custom_provider_supported_models_lists_raw_provider_models() {
                             "goose-claude-opus-4-8".to_string(),
                             "raw-databricks-endpoint".to_string(),
                         ],
-                    }) as Arc<dyn Provider>)
+                    }) as Arc<dyn GooseProvider>)
                 })
             });
         let conn = AcpServerConnection::new(
