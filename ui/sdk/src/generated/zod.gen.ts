@@ -1255,6 +1255,1185 @@ export const zDictationModelSelectRequest_unstable = z.object({
 });
 
 /**
+ * Read the full typed config from disk.
+ */
+export const zConfigReadRequest_unstable = z.record(z.unknown());
+
+export const zExtensionEntryDto = z.intersection(z.union([
+    z.object({
+        name: z.string().optional().default(''),
+        description: z.string().optional().default(''),
+        uri: z.union([
+            z.string(),
+            z.null()
+        ]).optional().default(null),
+        type: z.literal('sse')
+    }),
+    z.object({
+        name: z.string(),
+        description: z.string().optional().default(''),
+        cmd: z.string(),
+        args: z.array(z.string()),
+        envs: z.record(z.string()).optional().default({}),
+        env_keys: z.array(z.string()).optional().default([]),
+        timeout: z.union([
+            z.number().int().gte(0),
+            z.null()
+        ]).optional(),
+        bundled: z.union([
+            z.boolean(),
+            z.null()
+        ]).optional().default(null),
+        available_tools: z.array(z.string()).optional().default([]),
+        type: z.literal('stdio')
+    }),
+    z.object({
+        name: z.string(),
+        description: z.string().optional().default(''),
+        display_name: z.union([
+            z.string(),
+            z.null()
+        ]).optional(),
+        timeout: z.union([
+            z.number().int().gte(0),
+            z.null()
+        ]).optional(),
+        bundled: z.union([
+            z.boolean(),
+            z.null()
+        ]).optional().default(null),
+        available_tools: z.array(z.string()).optional().default([]),
+        type: z.literal('builtin')
+    }),
+    z.object({
+        name: z.string(),
+        description: z.string().optional().default(''),
+        display_name: z.union([
+            z.string(),
+            z.null()
+        ]).optional(),
+        bundled: z.union([
+            z.boolean(),
+            z.null()
+        ]).optional().default(null),
+        available_tools: z.array(z.string()).optional().default([]),
+        type: z.literal('platform')
+    }),
+    z.object({
+        name: z.string(),
+        description: z.string().optional().default(''),
+        uri: z.string(),
+        envs: z.record(z.string()).optional().default({}),
+        env_keys: z.array(z.string()).optional().default([]),
+        headers: z.record(z.string()).optional().default({}),
+        timeout: z.union([
+            z.number().int().gte(0),
+            z.null()
+        ]).optional(),
+        socket: z.union([
+            z.string(),
+            z.null()
+        ]).optional().default(null),
+        bundled: z.union([
+            z.boolean(),
+            z.null()
+        ]).optional().default(null),
+        available_tools: z.array(z.string()).optional().default([]),
+        type: z.literal('streamable_http')
+    }),
+    z.object({
+        name: z.string(),
+        description: z.string().optional().default(''),
+        tools: z.array(z.unknown()),
+        instructions: z.union([
+            z.string(),
+            z.null()
+        ]).optional(),
+        bundled: z.union([
+            z.boolean(),
+            z.null()
+        ]).optional().default(null),
+        available_tools: z.array(z.string()).optional().default([]),
+        type: z.literal('frontend')
+    }),
+    z.object({
+        name: z.string(),
+        description: z.string().optional().default(''),
+        code: z.string(),
+        timeout: z.union([
+            z.number().int().gte(0),
+            z.null()
+        ]).optional(),
+        dependencies: z.union([
+            z.array(z.string()),
+            z.null()
+        ]).optional().default(null),
+        available_tools: z.array(z.string()).optional().default([]),
+        type: z.literal('inline_python')
+    })
+]), z.object({
+    enabled: z.boolean()
+}));
+
+/**
+ * DTO for a slash command mapping entry.
+ */
+export const zSlashCommandMappingDto = z.object({
+    command: z.string(),
+    recipe_path: z.string()
+});
+
+/**
+ * DTO for a provider entry in the `providers` map.
+ */
+export const zProviderEntryDto = z.object({
+    enabled: z.boolean().optional().default(false),
+    model: z.string().optional().default(''),
+    configured: z.boolean().optional().default(false)
+});
+
+/**
+ * Response carrying the full typed config.
+ */
+export const zConfigReadResponse_unstable = z.object({
+    GOOSE_PROVIDER: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_MODEL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_MODE: z.enum([
+        'auto',
+        'approve',
+        'smart_approve',
+        'chat'
+    ]).optional(),
+    GOOSE_MAX_TOKENS: z.union([
+        z.number().int(),
+        z.null()
+    ]).optional(),
+    GOOSE_CONTEXT_LIMIT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_INPUT_LIMIT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_MAX_TURNS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_MAX_ACTIVE_AGENTS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_AUTO_COMPACT_THRESHOLD: z.union([
+        z.number(),
+        z.null()
+    ]).optional(),
+    GOOSE_TOOL_PAIR_SUMMARIZATION: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_TOOL_CALL_CUTOFF: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_STREAM_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_SEARCH_PATHS: z.union([
+        z.array(z.string()),
+        z.null()
+    ]).optional(),
+    GOOSE_DISABLE_SESSION_NAMING: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_DISABLE_KEYRING: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_TELEMETRY_ENABLED: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_DEFAULT_EXTENSION_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_PROMPT_EDITOR: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_PROMPT_EDITOR_ALWAYS: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_ALLOWLIST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_SYSTEM_PROMPT_FILE_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_DEBUG: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_SHOW_FULL_OUTPUT: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_DISABLE_TOOL_CALL_SUMMARY: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_STATUS_HOOK: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_LOCAL_ENABLE_THINKING: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_DATABRICKS_CLIENT_REQUEST_ID: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    CONTEXT_FILE_NAMES: z.union([
+        z.array(z.string()),
+        z.null()
+    ]).optional(),
+    EDIT_MODE: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    RANDOM_THINKING_MESSAGES: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    CODE_MODE_TOOL_DISCLOSURE: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLIENT_CERT_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLIENT_KEY_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CA_CERT_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_PLANNER_PROVIDER: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_PLANNER_MODEL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_SUBAGENT_PROVIDER: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_SUBAGENT_MODEL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_SUBAGENT_MAX_TURNS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_MAX_BACKGROUND_TASKS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_RECIPE_GITHUB_REPO: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_RECIPE_RETRY_TIMEOUT_SECONDS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_RECIPE_ON_FAILURE_TIMEOUT_SECONDS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_MIN_PRIORITY: z.union([
+        z.number(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_THEME: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_LIGHT_THEME: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_DARK_THEME: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_SHOW_COST: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_SHOW_THINKING: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_NEWLINE_KEY: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CLAUDE_CODE_COMMAND: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GEMINI_CLI_COMMAND: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CURSOR_AGENT_COMMAND: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CODEX_COMMAND: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CODEX_REASONING_EFFORT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CODEX_ENABLE_SKILLS: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CODEX_SKIP_GIT_CHECK: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CHATGPT_CODEX_REASONING_EFFORT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CLAUDE_THINKING_TYPE: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CLAUDE_THINKING_EFFORT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CLAUDE_THINKING_BUDGET: z.union([
+        z.number().int(),
+        z.null()
+    ]).optional(),
+    ANTHROPIC_THINKING_BUDGET: z.union([
+        z.number().int(),
+        z.null()
+    ]).optional(),
+    GEMINI3_THINKING_LEVEL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GEMINI25_THINKING_BUDGET: z.union([
+        z.number().int(),
+        z.null()
+    ]).optional(),
+    GOOSE_THINKING_EFFORT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    SECURITY_PROMPT_ENABLED: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    SECURITY_PROMPT_THRESHOLD: z.union([
+        z.number(),
+        z.null()
+    ]).optional(),
+    SECURITY_PROMPT_CLASSIFIER_ENABLED: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    SECURITY_PROMPT_CLASSIFIER_MODEL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    SECURITY_PROMPT_CLASSIFIER_ENDPOINT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    SECURITY_COMMAND_CLASSIFIER_ENABLED: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    OPENAI_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENAI_BASE_URL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENAI_BASE_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENAI_ORGANIZATION: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENAI_PROJECT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENAI_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    ANTHROPIC_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OLLAMA_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OLLAMA_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    OLLAMA_STREAM_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    OLLAMA_STREAM_USAGE: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    DATABRICKS_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    DATABRICKS_MAX_RETRIES: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    DATABRICKS_INITIAL_RETRY_INTERVAL_MS: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    DATABRICKS_BACKOFF_MULTIPLIER: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    DATABRICKS_MAX_RETRY_INTERVAL_MS: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AZURE_OPENAI_ENDPOINT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AZURE_OPENAI_DEPLOYMENT_NAME: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AZURE_OPENAI_API_VERSION: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOGLE_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_PROJECT_ID: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_LOCATION: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_MAX_RETRIES: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_INITIAL_RETRY_INTERVAL_MS: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_BACKOFF_MULTIPLIER: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_MAX_RETRY_INTERVAL_MS: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AWS_REGION: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AWS_PROFILE: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    BEDROCK_MAX_RETRIES: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    BEDROCK_INITIAL_RETRY_INTERVAL_MS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    BEDROCK_BACKOFF_MULTIPLIER: z.union([
+        z.number(),
+        z.null()
+    ]).optional(),
+    BEDROCK_MAX_RETRY_INTERVAL_MS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    BEDROCK_ENABLE_CACHING: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    SAGEMAKER_ENDPOINT_NAME: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    LITELLM_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    LITELLM_BASE_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    LITELLM_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    SNOWFLAKE_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GITHUB_COPILOT_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GITHUB_COPILOT_CLIENT_ID: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GITHUB_COPILOT_TOKEN_URL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    XAI_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENROUTER_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    VENICE_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    VENICE_BASE_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    VENICE_MODELS_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    TETRATE_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AVIAN_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    HF_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    active_provider: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    otel_exporter_otlp_endpoint: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    otel_exporter_otlp_timeout: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    tunnel_auto_start: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    extensions: z.union([
+        z.record(zExtensionEntryDto),
+        z.null()
+    ]).optional(),
+    slash_commands: z.union([
+        z.array(zSlashCommandMappingDto),
+        z.null()
+    ]).optional(),
+    experiments: z.union([
+        z.record(z.boolean()),
+        z.null()
+    ]).optional(),
+    providers: z.union([
+        z.record(zProviderEntryDto),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Sparse patch: only fields present in the payload are written to disk.
+ * Missing fields and explicit null both leave the existing value unchanged.
+ */
+export const zConfigWriteRequest_unstable = z.object({
+    GOOSE_PROVIDER: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_MODEL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_MODE: z.enum([
+        'auto',
+        'approve',
+        'smart_approve',
+        'chat'
+    ]).optional(),
+    GOOSE_MAX_TOKENS: z.union([
+        z.number().int(),
+        z.null()
+    ]).optional(),
+    GOOSE_CONTEXT_LIMIT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_INPUT_LIMIT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_MAX_TURNS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_MAX_ACTIVE_AGENTS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_AUTO_COMPACT_THRESHOLD: z.union([
+        z.number(),
+        z.null()
+    ]).optional(),
+    GOOSE_TOOL_PAIR_SUMMARIZATION: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_TOOL_CALL_CUTOFF: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_STREAM_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_SEARCH_PATHS: z.union([
+        z.array(z.string()),
+        z.null()
+    ]).optional(),
+    GOOSE_DISABLE_SESSION_NAMING: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_DISABLE_KEYRING: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_TELEMETRY_ENABLED: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_DEFAULT_EXTENSION_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_PROMPT_EDITOR: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_PROMPT_EDITOR_ALWAYS: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_ALLOWLIST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_SYSTEM_PROMPT_FILE_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_DEBUG: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_SHOW_FULL_OUTPUT: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_DISABLE_TOOL_CALL_SUMMARY: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_STATUS_HOOK: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_LOCAL_ENABLE_THINKING: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_DATABRICKS_CLIENT_REQUEST_ID: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    CONTEXT_FILE_NAMES: z.union([
+        z.array(z.string()),
+        z.null()
+    ]).optional(),
+    EDIT_MODE: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    RANDOM_THINKING_MESSAGES: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    CODE_MODE_TOOL_DISCLOSURE: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLIENT_CERT_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLIENT_KEY_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CA_CERT_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_PLANNER_PROVIDER: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_PLANNER_MODEL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_SUBAGENT_PROVIDER: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_SUBAGENT_MODEL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_SUBAGENT_MAX_TURNS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_MAX_BACKGROUND_TASKS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_RECIPE_GITHUB_REPO: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_RECIPE_RETRY_TIMEOUT_SECONDS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_RECIPE_ON_FAILURE_TIMEOUT_SECONDS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_MIN_PRIORITY: z.union([
+        z.number(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_THEME: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_LIGHT_THEME: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_DARK_THEME: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_SHOW_COST: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_SHOW_THINKING: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    GOOSE_CLI_NEWLINE_KEY: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CLAUDE_CODE_COMMAND: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GEMINI_CLI_COMMAND: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CURSOR_AGENT_COMMAND: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CODEX_COMMAND: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CODEX_REASONING_EFFORT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CODEX_ENABLE_SKILLS: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CODEX_SKIP_GIT_CHECK: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CHATGPT_CODEX_REASONING_EFFORT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CLAUDE_THINKING_TYPE: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CLAUDE_THINKING_EFFORT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    CLAUDE_THINKING_BUDGET: z.union([
+        z.number().int(),
+        z.null()
+    ]).optional(),
+    ANTHROPIC_THINKING_BUDGET: z.union([
+        z.number().int(),
+        z.null()
+    ]).optional(),
+    GEMINI3_THINKING_LEVEL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GEMINI25_THINKING_BUDGET: z.union([
+        z.number().int(),
+        z.null()
+    ]).optional(),
+    GOOSE_THINKING_EFFORT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    SECURITY_PROMPT_ENABLED: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    SECURITY_PROMPT_THRESHOLD: z.union([
+        z.number(),
+        z.null()
+    ]).optional(),
+    SECURITY_PROMPT_CLASSIFIER_ENABLED: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    SECURITY_PROMPT_CLASSIFIER_MODEL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    SECURITY_PROMPT_CLASSIFIER_ENDPOINT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    SECURITY_COMMAND_CLASSIFIER_ENABLED: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    OPENAI_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENAI_BASE_URL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENAI_BASE_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENAI_ORGANIZATION: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENAI_PROJECT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENAI_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    ANTHROPIC_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OLLAMA_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OLLAMA_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    OLLAMA_STREAM_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    OLLAMA_STREAM_USAGE: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    DATABRICKS_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    DATABRICKS_MAX_RETRIES: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    DATABRICKS_INITIAL_RETRY_INTERVAL_MS: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    DATABRICKS_BACKOFF_MULTIPLIER: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    DATABRICKS_MAX_RETRY_INTERVAL_MS: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AZURE_OPENAI_ENDPOINT: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AZURE_OPENAI_DEPLOYMENT_NAME: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AZURE_OPENAI_API_VERSION: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GOOGLE_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_PROJECT_ID: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_LOCATION: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_MAX_RETRIES: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_INITIAL_RETRY_INTERVAL_MS: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_BACKOFF_MULTIPLIER: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GCP_MAX_RETRY_INTERVAL_MS: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AWS_REGION: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AWS_PROFILE: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    BEDROCK_MAX_RETRIES: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    BEDROCK_INITIAL_RETRY_INTERVAL_MS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    BEDROCK_BACKOFF_MULTIPLIER: z.union([
+        z.number(),
+        z.null()
+    ]).optional(),
+    BEDROCK_MAX_RETRY_INTERVAL_MS: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    BEDROCK_ENABLE_CACHING: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    SAGEMAKER_ENDPOINT_NAME: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    LITELLM_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    LITELLM_BASE_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    LITELLM_TIMEOUT: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    SNOWFLAKE_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GITHUB_COPILOT_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GITHUB_COPILOT_CLIENT_ID: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    GITHUB_COPILOT_TOKEN_URL: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    XAI_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    OPENROUTER_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    VENICE_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    VENICE_BASE_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    VENICE_MODELS_PATH: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    TETRATE_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    AVIAN_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    HF_HOST: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    active_provider: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    otel_exporter_otlp_endpoint: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    otel_exporter_otlp_timeout: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    tunnel_auto_start: z.union([
+        z.boolean(),
+        z.null()
+    ]).optional(),
+    extensions: z.union([
+        z.record(zExtensionEntryDto),
+        z.null()
+    ]).optional(),
+    slash_commands: z.union([
+        z.array(zSlashCommandMappingDto),
+        z.null()
+    ]).optional(),
+    experiments: z.union([
+        z.record(z.boolean()),
+        z.null()
+    ]).optional(),
+    providers: z.union([
+        z.record(zProviderEntryDto),
+        z.null()
+    ]).optional()
+});
+
+/**
  * Streaming context-window usage update for a session.
  */
 export const zSessionUsageUpdate = z.object({
@@ -1397,7 +2576,9 @@ export const zExtRequest = z.object({
             zDictationModelDownloadProgressRequest_unstable,
             zDictationModelCancelRequest_unstable,
             zDictationModelDeleteRequest_unstable,
-            zDictationModelSelectRequest_unstable
+            zDictationModelSelectRequest_unstable,
+            zConfigReadRequest_unstable,
+            zConfigWriteRequest_unstable
         ]),
         z.union([
             z.record(z.unknown()),
@@ -1445,7 +2626,8 @@ export const zExtResponse = z.union([
                 zDictationTranscribeResponse_unstable,
                 zDictationConfigResponse_unstable,
                 zDictationModelsListResponse_unstable,
-                zDictationModelDownloadProgressResponse_unstable
+                zDictationModelDownloadProgressResponse_unstable,
+                zConfigReadResponse_unstable
             ]),
             z.unknown()
         ]).optional()

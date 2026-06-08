@@ -3,6 +3,7 @@ use goose::agents::extension::ToolInfo;
 use goose::agents::ExtensionConfig;
 use goose::config::permission::PermissionLevel;
 use goose::config::ExtensionEntry;
+use goose::config::ProviderEntry;
 use goose::conversation::Conversation;
 use goose::download_manager::{DownloadProgress, DownloadStatus};
 use goose::model::ModelConfig;
@@ -489,6 +490,7 @@ derive_utoipa!(IconTheme as IconThemeSchema);
         super::routes::config_management::UpsertConfigQuery,
         super::routes::config_management::ConfigKeyQuery,
         super::routes::config_management::ConfigResponse,
+        goose::slash_commands::recipe_slash_command::SlashCommandMapping,
         super::routes::config_management::ProvidersResponse,
         super::routes::config_management::ProviderDetails,
         super::routes::config_management::ProviderSecretsResponse,
@@ -569,6 +571,7 @@ derive_utoipa!(IconTheme as IconThemeSchema);
         DeclarativeProviderConfig,
         EnvVarConfig,
         ExtensionEntry,
+        ProviderEntry,
         ExtensionConfig,
         ConfigKey,
         Envs,

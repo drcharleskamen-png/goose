@@ -126,6 +126,27 @@ impl GooseAcpAgent {
             model_id,
         })
     }
+
+    pub(super) async fn on_config_read(
+        &self,
+    ) -> Result<ConfigReadResponse, agent_client_protocol::Error> {
+        let config = self.config()?;
+        let schema = crate::config::schema::GooseConfigSchema::from_config(config);
+        let value = serde_json::to_value(&schema).internal_err()?;
+        serde_json::from_value(value).internal_err()
+    }
+
+    pub(super) async fn on_config_write(
+        &self,
+        req: ConfigWriteRequest,
+    ) -> Result<ConfigReadResponse, agent_client_protocol::Error> {
+        let config = self.config()?;
+        let value = serde_json::to_value(&req.config).internal_err()?;
+        let schema: crate::config::schema::GooseConfigSchema =
+            serde_json::from_value(value).internal_err()?;
+        schema.apply_to_config(config).internal_err()?;
+        self.on_config_read().await
+    }
 }
 
 struct PreferenceDef {

@@ -1276,6 +1276,380 @@ export type DictationModelSelectRequest_unstable = {
 };
 
 /**
+ * Read the full typed config from disk.
+ */
+export type ConfigReadRequest_unstable = {
+    [key: string]: unknown;
+};
+
+/**
+ * Response carrying the full typed config.
+ */
+export type ConfigReadResponse_unstable = {
+    GOOSE_PROVIDER?: string | null;
+    GOOSE_MODEL?: string | null;
+    GOOSE_MODE?: 'auto' | 'approve' | 'smart_approve' | 'chat';
+    GOOSE_MAX_TOKENS?: number | null;
+    GOOSE_CONTEXT_LIMIT?: number | null;
+    GOOSE_INPUT_LIMIT?: number | null;
+    GOOSE_MAX_TURNS?: number | null;
+    GOOSE_MAX_ACTIVE_AGENTS?: number | null;
+    GOOSE_AUTO_COMPACT_THRESHOLD?: number | null;
+    GOOSE_TOOL_PAIR_SUMMARIZATION?: boolean | null;
+    GOOSE_TOOL_CALL_CUTOFF?: number | null;
+    GOOSE_STREAM_TIMEOUT?: number | null;
+    GOOSE_SEARCH_PATHS?: Array<string> | null;
+    GOOSE_DISABLE_SESSION_NAMING?: boolean | null;
+    GOOSE_DISABLE_KEYRING?: boolean | null;
+    GOOSE_TELEMETRY_ENABLED?: boolean | null;
+    GOOSE_DEFAULT_EXTENSION_TIMEOUT?: number | null;
+    GOOSE_PROMPT_EDITOR?: string | null;
+    GOOSE_PROMPT_EDITOR_ALWAYS?: boolean | null;
+    GOOSE_ALLOWLIST?: string | null;
+    GOOSE_SYSTEM_PROMPT_FILE_PATH?: string | null;
+    GOOSE_DEBUG?: boolean | null;
+    GOOSE_SHOW_FULL_OUTPUT?: boolean | null;
+    GOOSE_DISABLE_TOOL_CALL_SUMMARY?: boolean | null;
+    GOOSE_STATUS_HOOK?: string | null;
+    GOOSE_LOCAL_ENABLE_THINKING?: boolean | null;
+    GOOSE_DATABRICKS_CLIENT_REQUEST_ID?: boolean | null;
+    CONTEXT_FILE_NAMES?: Array<string> | null;
+    EDIT_MODE?: string | null;
+    RANDOM_THINKING_MESSAGES?: boolean | null;
+    CODE_MODE_TOOL_DISCLOSURE?: string | null;
+    GOOSE_CLIENT_CERT_PATH?: string | null;
+    GOOSE_CLIENT_KEY_PATH?: string | null;
+    GOOSE_CA_CERT_PATH?: string | null;
+    GOOSE_PLANNER_PROVIDER?: string | null;
+    GOOSE_PLANNER_MODEL?: string | null;
+    GOOSE_SUBAGENT_PROVIDER?: string | null;
+    GOOSE_SUBAGENT_MODEL?: string | null;
+    GOOSE_SUBAGENT_MAX_TURNS?: number | null;
+    GOOSE_MAX_BACKGROUND_TASKS?: number | null;
+    GOOSE_RECIPE_GITHUB_REPO?: string | null;
+    GOOSE_RECIPE_RETRY_TIMEOUT_SECONDS?: number | null;
+    GOOSE_RECIPE_ON_FAILURE_TIMEOUT_SECONDS?: number | null;
+    GOOSE_CLI_MIN_PRIORITY?: number | null;
+    GOOSE_CLI_THEME?: string | null;
+    GOOSE_CLI_LIGHT_THEME?: string | null;
+    GOOSE_CLI_DARK_THEME?: string | null;
+    GOOSE_CLI_SHOW_COST?: boolean | null;
+    GOOSE_CLI_SHOW_THINKING?: boolean | null;
+    GOOSE_CLI_NEWLINE_KEY?: string | null;
+    CLAUDE_CODE_COMMAND?: string | null;
+    GEMINI_CLI_COMMAND?: string | null;
+    CURSOR_AGENT_COMMAND?: string | null;
+    CODEX_COMMAND?: string | null;
+    CODEX_REASONING_EFFORT?: string | null;
+    CODEX_ENABLE_SKILLS?: string | null;
+    CODEX_SKIP_GIT_CHECK?: string | null;
+    CHATGPT_CODEX_REASONING_EFFORT?: string | null;
+    CLAUDE_THINKING_TYPE?: string | null;
+    CLAUDE_THINKING_EFFORT?: string | null;
+    CLAUDE_THINKING_BUDGET?: number | null;
+    ANTHROPIC_THINKING_BUDGET?: number | null;
+    GEMINI3_THINKING_LEVEL?: string | null;
+    GEMINI25_THINKING_BUDGET?: number | null;
+    GOOSE_THINKING_EFFORT?: string | null;
+    SECURITY_PROMPT_ENABLED?: boolean | null;
+    SECURITY_PROMPT_THRESHOLD?: number | null;
+    SECURITY_PROMPT_CLASSIFIER_ENABLED?: boolean | null;
+    SECURITY_PROMPT_CLASSIFIER_MODEL?: string | null;
+    SECURITY_PROMPT_CLASSIFIER_ENDPOINT?: string | null;
+    SECURITY_COMMAND_CLASSIFIER_ENABLED?: boolean | null;
+    OPENAI_HOST?: string | null;
+    OPENAI_BASE_URL?: string | null;
+    OPENAI_BASE_PATH?: string | null;
+    OPENAI_ORGANIZATION?: string | null;
+    OPENAI_PROJECT?: string | null;
+    OPENAI_TIMEOUT?: number | null;
+    ANTHROPIC_HOST?: string | null;
+    OLLAMA_HOST?: string | null;
+    OLLAMA_TIMEOUT?: number | null;
+    OLLAMA_STREAM_TIMEOUT?: number | null;
+    OLLAMA_STREAM_USAGE?: boolean | null;
+    DATABRICKS_HOST?: string | null;
+    DATABRICKS_MAX_RETRIES?: string | null;
+    DATABRICKS_INITIAL_RETRY_INTERVAL_MS?: string | null;
+    DATABRICKS_BACKOFF_MULTIPLIER?: string | null;
+    DATABRICKS_MAX_RETRY_INTERVAL_MS?: string | null;
+    AZURE_OPENAI_ENDPOINT?: string | null;
+    AZURE_OPENAI_DEPLOYMENT_NAME?: string | null;
+    AZURE_OPENAI_API_VERSION?: string | null;
+    GOOGLE_HOST?: string | null;
+    GCP_PROJECT_ID?: string | null;
+    GCP_LOCATION?: string | null;
+    GCP_MAX_RETRIES?: string | null;
+    GCP_INITIAL_RETRY_INTERVAL_MS?: string | null;
+    GCP_BACKOFF_MULTIPLIER?: string | null;
+    GCP_MAX_RETRY_INTERVAL_MS?: string | null;
+    AWS_REGION?: string | null;
+    AWS_PROFILE?: string | null;
+    BEDROCK_MAX_RETRIES?: number | null;
+    BEDROCK_INITIAL_RETRY_INTERVAL_MS?: number | null;
+    BEDROCK_BACKOFF_MULTIPLIER?: number | null;
+    BEDROCK_MAX_RETRY_INTERVAL_MS?: number | null;
+    BEDROCK_ENABLE_CACHING?: boolean | null;
+    SAGEMAKER_ENDPOINT_NAME?: string | null;
+    LITELLM_HOST?: string | null;
+    LITELLM_BASE_PATH?: string | null;
+    LITELLM_TIMEOUT?: number | null;
+    SNOWFLAKE_HOST?: string | null;
+    GITHUB_COPILOT_HOST?: string | null;
+    GITHUB_COPILOT_CLIENT_ID?: string | null;
+    GITHUB_COPILOT_TOKEN_URL?: string | null;
+    XAI_HOST?: string | null;
+    OPENROUTER_HOST?: string | null;
+    VENICE_HOST?: string | null;
+    VENICE_BASE_PATH?: string | null;
+    VENICE_MODELS_PATH?: string | null;
+    TETRATE_HOST?: string | null;
+    AVIAN_HOST?: string | null;
+    HF_HOST?: string | null;
+    active_provider?: string | null;
+    otel_exporter_otlp_endpoint?: string | null;
+    otel_exporter_otlp_timeout?: number | null;
+    tunnel_auto_start?: boolean | null;
+    extensions?: {
+        [key: string]: ExtensionEntryDto;
+    } | null;
+    slash_commands?: Array<SlashCommandMappingDto> | null;
+    experiments?: {
+        [key: string]: boolean;
+    } | null;
+    providers?: {
+        [key: string]: ProviderEntryDto;
+    } | null;
+};
+
+export type ExtensionEntryDto = ({
+    name?: string;
+    description?: string;
+    uri?: string | null;
+    type: 'sse';
+} | {
+    name: string;
+    description?: string;
+    cmd: string;
+    args: Array<string>;
+    envs?: {
+        [key: string]: string;
+    };
+    env_keys?: Array<string>;
+    timeout?: number | null;
+    bundled?: boolean | null;
+    available_tools?: Array<string>;
+    type: 'stdio';
+} | {
+    name: string;
+    description?: string;
+    display_name?: string | null;
+    timeout?: number | null;
+    bundled?: boolean | null;
+    available_tools?: Array<string>;
+    type: 'builtin';
+} | {
+    name: string;
+    description?: string;
+    display_name?: string | null;
+    bundled?: boolean | null;
+    available_tools?: Array<string>;
+    type: 'platform';
+} | {
+    name: string;
+    description?: string;
+    uri: string;
+    envs?: {
+        [key: string]: string;
+    };
+    env_keys?: Array<string>;
+    headers?: {
+        [key: string]: string;
+    };
+    timeout?: number | null;
+    socket?: string | null;
+    bundled?: boolean | null;
+    available_tools?: Array<string>;
+    type: 'streamable_http';
+} | {
+    name: string;
+    description?: string;
+    tools: Array<unknown>;
+    instructions?: string | null;
+    bundled?: boolean | null;
+    available_tools?: Array<string>;
+    type: 'frontend';
+} | {
+    name: string;
+    description?: string;
+    code: string;
+    timeout?: number | null;
+    dependencies?: Array<string> | null;
+    available_tools?: Array<string>;
+    type: 'inline_python';
+}) & {
+    enabled: boolean;
+};
+
+/**
+ * DTO for a slash command mapping entry.
+ */
+export type SlashCommandMappingDto = {
+    command: string;
+    recipe_path: string;
+};
+
+/**
+ * DTO for a provider entry in the `providers` map.
+ */
+export type ProviderEntryDto = {
+    enabled?: boolean;
+    model?: string;
+    configured?: boolean;
+};
+
+/**
+ * Sparse patch: only fields present in the payload are written to disk.
+ * Missing fields and explicit null both leave the existing value unchanged.
+ */
+export type ConfigWriteRequest_unstable = {
+    GOOSE_PROVIDER?: string | null;
+    GOOSE_MODEL?: string | null;
+    GOOSE_MODE?: 'auto' | 'approve' | 'smart_approve' | 'chat';
+    GOOSE_MAX_TOKENS?: number | null;
+    GOOSE_CONTEXT_LIMIT?: number | null;
+    GOOSE_INPUT_LIMIT?: number | null;
+    GOOSE_MAX_TURNS?: number | null;
+    GOOSE_MAX_ACTIVE_AGENTS?: number | null;
+    GOOSE_AUTO_COMPACT_THRESHOLD?: number | null;
+    GOOSE_TOOL_PAIR_SUMMARIZATION?: boolean | null;
+    GOOSE_TOOL_CALL_CUTOFF?: number | null;
+    GOOSE_STREAM_TIMEOUT?: number | null;
+    GOOSE_SEARCH_PATHS?: Array<string> | null;
+    GOOSE_DISABLE_SESSION_NAMING?: boolean | null;
+    GOOSE_DISABLE_KEYRING?: boolean | null;
+    GOOSE_TELEMETRY_ENABLED?: boolean | null;
+    GOOSE_DEFAULT_EXTENSION_TIMEOUT?: number | null;
+    GOOSE_PROMPT_EDITOR?: string | null;
+    GOOSE_PROMPT_EDITOR_ALWAYS?: boolean | null;
+    GOOSE_ALLOWLIST?: string | null;
+    GOOSE_SYSTEM_PROMPT_FILE_PATH?: string | null;
+    GOOSE_DEBUG?: boolean | null;
+    GOOSE_SHOW_FULL_OUTPUT?: boolean | null;
+    GOOSE_DISABLE_TOOL_CALL_SUMMARY?: boolean | null;
+    GOOSE_STATUS_HOOK?: string | null;
+    GOOSE_LOCAL_ENABLE_THINKING?: boolean | null;
+    GOOSE_DATABRICKS_CLIENT_REQUEST_ID?: boolean | null;
+    CONTEXT_FILE_NAMES?: Array<string> | null;
+    EDIT_MODE?: string | null;
+    RANDOM_THINKING_MESSAGES?: boolean | null;
+    CODE_MODE_TOOL_DISCLOSURE?: string | null;
+    GOOSE_CLIENT_CERT_PATH?: string | null;
+    GOOSE_CLIENT_KEY_PATH?: string | null;
+    GOOSE_CA_CERT_PATH?: string | null;
+    GOOSE_PLANNER_PROVIDER?: string | null;
+    GOOSE_PLANNER_MODEL?: string | null;
+    GOOSE_SUBAGENT_PROVIDER?: string | null;
+    GOOSE_SUBAGENT_MODEL?: string | null;
+    GOOSE_SUBAGENT_MAX_TURNS?: number | null;
+    GOOSE_MAX_BACKGROUND_TASKS?: number | null;
+    GOOSE_RECIPE_GITHUB_REPO?: string | null;
+    GOOSE_RECIPE_RETRY_TIMEOUT_SECONDS?: number | null;
+    GOOSE_RECIPE_ON_FAILURE_TIMEOUT_SECONDS?: number | null;
+    GOOSE_CLI_MIN_PRIORITY?: number | null;
+    GOOSE_CLI_THEME?: string | null;
+    GOOSE_CLI_LIGHT_THEME?: string | null;
+    GOOSE_CLI_DARK_THEME?: string | null;
+    GOOSE_CLI_SHOW_COST?: boolean | null;
+    GOOSE_CLI_SHOW_THINKING?: boolean | null;
+    GOOSE_CLI_NEWLINE_KEY?: string | null;
+    CLAUDE_CODE_COMMAND?: string | null;
+    GEMINI_CLI_COMMAND?: string | null;
+    CURSOR_AGENT_COMMAND?: string | null;
+    CODEX_COMMAND?: string | null;
+    CODEX_REASONING_EFFORT?: string | null;
+    CODEX_ENABLE_SKILLS?: string | null;
+    CODEX_SKIP_GIT_CHECK?: string | null;
+    CHATGPT_CODEX_REASONING_EFFORT?: string | null;
+    CLAUDE_THINKING_TYPE?: string | null;
+    CLAUDE_THINKING_EFFORT?: string | null;
+    CLAUDE_THINKING_BUDGET?: number | null;
+    ANTHROPIC_THINKING_BUDGET?: number | null;
+    GEMINI3_THINKING_LEVEL?: string | null;
+    GEMINI25_THINKING_BUDGET?: number | null;
+    GOOSE_THINKING_EFFORT?: string | null;
+    SECURITY_PROMPT_ENABLED?: boolean | null;
+    SECURITY_PROMPT_THRESHOLD?: number | null;
+    SECURITY_PROMPT_CLASSIFIER_ENABLED?: boolean | null;
+    SECURITY_PROMPT_CLASSIFIER_MODEL?: string | null;
+    SECURITY_PROMPT_CLASSIFIER_ENDPOINT?: string | null;
+    SECURITY_COMMAND_CLASSIFIER_ENABLED?: boolean | null;
+    OPENAI_HOST?: string | null;
+    OPENAI_BASE_URL?: string | null;
+    OPENAI_BASE_PATH?: string | null;
+    OPENAI_ORGANIZATION?: string | null;
+    OPENAI_PROJECT?: string | null;
+    OPENAI_TIMEOUT?: number | null;
+    ANTHROPIC_HOST?: string | null;
+    OLLAMA_HOST?: string | null;
+    OLLAMA_TIMEOUT?: number | null;
+    OLLAMA_STREAM_TIMEOUT?: number | null;
+    OLLAMA_STREAM_USAGE?: boolean | null;
+    DATABRICKS_HOST?: string | null;
+    DATABRICKS_MAX_RETRIES?: string | null;
+    DATABRICKS_INITIAL_RETRY_INTERVAL_MS?: string | null;
+    DATABRICKS_BACKOFF_MULTIPLIER?: string | null;
+    DATABRICKS_MAX_RETRY_INTERVAL_MS?: string | null;
+    AZURE_OPENAI_ENDPOINT?: string | null;
+    AZURE_OPENAI_DEPLOYMENT_NAME?: string | null;
+    AZURE_OPENAI_API_VERSION?: string | null;
+    GOOGLE_HOST?: string | null;
+    GCP_PROJECT_ID?: string | null;
+    GCP_LOCATION?: string | null;
+    GCP_MAX_RETRIES?: string | null;
+    GCP_INITIAL_RETRY_INTERVAL_MS?: string | null;
+    GCP_BACKOFF_MULTIPLIER?: string | null;
+    GCP_MAX_RETRY_INTERVAL_MS?: string | null;
+    AWS_REGION?: string | null;
+    AWS_PROFILE?: string | null;
+    BEDROCK_MAX_RETRIES?: number | null;
+    BEDROCK_INITIAL_RETRY_INTERVAL_MS?: number | null;
+    BEDROCK_BACKOFF_MULTIPLIER?: number | null;
+    BEDROCK_MAX_RETRY_INTERVAL_MS?: number | null;
+    BEDROCK_ENABLE_CACHING?: boolean | null;
+    SAGEMAKER_ENDPOINT_NAME?: string | null;
+    LITELLM_HOST?: string | null;
+    LITELLM_BASE_PATH?: string | null;
+    LITELLM_TIMEOUT?: number | null;
+    SNOWFLAKE_HOST?: string | null;
+    GITHUB_COPILOT_HOST?: string | null;
+    GITHUB_COPILOT_CLIENT_ID?: string | null;
+    GITHUB_COPILOT_TOKEN_URL?: string | null;
+    XAI_HOST?: string | null;
+    OPENROUTER_HOST?: string | null;
+    VENICE_HOST?: string | null;
+    VENICE_BASE_PATH?: string | null;
+    VENICE_MODELS_PATH?: string | null;
+    TETRATE_HOST?: string | null;
+    AVIAN_HOST?: string | null;
+    HF_HOST?: string | null;
+    active_provider?: string | null;
+    otel_exporter_otlp_endpoint?: string | null;
+    otel_exporter_otlp_timeout?: number | null;
+    tunnel_auto_start?: boolean | null;
+    extensions?: {
+        [key: string]: ExtensionEntryDto;
+    } | null;
+    slash_commands?: Array<SlashCommandMappingDto> | null;
+    experiments?: {
+        [key: string]: boolean;
+    } | null;
+    providers?: {
+        [key: string]: ProviderEntryDto;
+    } | null;
+};
+
+/**
  * Goose-custom session update notification — a parallel to ACP's
  * `session/update` carrying goose-specific update variants.
  */
@@ -1345,14 +1719,14 @@ export type InteractionUpdate = {
 export type ExtRequest = {
     id: string;
     method: string;
-    params?: AddExtensionRequest_unstable | RemoveExtensionRequest_unstable | GetToolsRequest_unstable | GooseToolCallRequest_unstable | ReadResourceRequest_unstable | UpdateWorkingDirRequest_unstable | SetSessionSystemPromptRequest_unstable | DeleteSessionRequest | GetConfigExtensionsRequest_unstable | GetAvailableExtensionsRequest_unstable | AddConfigExtensionRequest_unstable | RemoveConfigExtensionRequest_unstable | SetConfigExtensionEnabledRequest_unstable | GetSessionExtensionsRequest_unstable | ListProvidersRequest_unstable | ProviderSupportedModelsListRequest_unstable | ProviderCatalogListRequest_unstable | ProviderSetupCatalogListRequest_unstable | ProviderCatalogTemplateRequest_unstable | CustomProviderCreateRequest_unstable | CustomProviderReadRequest_unstable | CustomProviderUpdateRequest_unstable | CustomProviderDeleteRequest_unstable | RefreshProviderInventoryRequest_unstable | ProviderConfigReadRequest_unstable | ProviderConfigStatusRequest_unstable | ProviderConfigSaveRequest_unstable | ProviderConfigDeleteRequest_unstable | ProviderConfigAuthenticateRequest_unstable | PreferencesReadRequest_unstable | PreferencesSaveRequest_unstable | PreferencesRemoveRequest_unstable | DefaultsReadRequest_unstable | DefaultsSaveRequest_unstable | OnboardingImportScanRequest_unstable | OnboardingImportApplyRequest_unstable | ExportSessionRequest_unstable | ImportSessionRequest_unstable | ElicitationRespondRequest_unstable | UpdateSessionProjectRequest_unstable | RenameSessionRequest_unstable | ArchiveSessionRequest_unstable | UnarchiveSessionRequest_unstable | CreateSourceRequest_unstable | ListSourcesRequest_unstable | UpdateSourceRequest_unstable | DeleteSourceRequest_unstable | ExportSourceRequest_unstable | ImportSourcesRequest_unstable | DictationTranscribeRequest_unstable | DictationConfigRequest_unstable | DictationSecretSaveRequest_unstable | DictationSecretDeleteRequest_unstable | DictationModelsListRequest_unstable | DictationModelDownloadRequest_unstable | DictationModelDownloadProgressRequest_unstable | DictationModelCancelRequest_unstable | DictationModelDeleteRequest_unstable | DictationModelSelectRequest_unstable | {
+    params?: AddExtensionRequest_unstable | RemoveExtensionRequest_unstable | GetToolsRequest_unstable | GooseToolCallRequest_unstable | ReadResourceRequest_unstable | UpdateWorkingDirRequest_unstable | SetSessionSystemPromptRequest_unstable | DeleteSessionRequest | GetConfigExtensionsRequest_unstable | GetAvailableExtensionsRequest_unstable | AddConfigExtensionRequest_unstable | RemoveConfigExtensionRequest_unstable | SetConfigExtensionEnabledRequest_unstable | GetSessionExtensionsRequest_unstable | ListProvidersRequest_unstable | ProviderSupportedModelsListRequest_unstable | ProviderCatalogListRequest_unstable | ProviderSetupCatalogListRequest_unstable | ProviderCatalogTemplateRequest_unstable | CustomProviderCreateRequest_unstable | CustomProviderReadRequest_unstable | CustomProviderUpdateRequest_unstable | CustomProviderDeleteRequest_unstable | RefreshProviderInventoryRequest_unstable | ProviderConfigReadRequest_unstable | ProviderConfigStatusRequest_unstable | ProviderConfigSaveRequest_unstable | ProviderConfigDeleteRequest_unstable | ProviderConfigAuthenticateRequest_unstable | PreferencesReadRequest_unstable | PreferencesSaveRequest_unstable | PreferencesRemoveRequest_unstable | DefaultsReadRequest_unstable | DefaultsSaveRequest_unstable | OnboardingImportScanRequest_unstable | OnboardingImportApplyRequest_unstable | ExportSessionRequest_unstable | ImportSessionRequest_unstable | ElicitationRespondRequest_unstable | UpdateSessionProjectRequest_unstable | RenameSessionRequest_unstable | ArchiveSessionRequest_unstable | UnarchiveSessionRequest_unstable | CreateSourceRequest_unstable | ListSourcesRequest_unstable | UpdateSourceRequest_unstable | DeleteSourceRequest_unstable | ExportSourceRequest_unstable | ImportSourcesRequest_unstable | DictationTranscribeRequest_unstable | DictationConfigRequest_unstable | DictationSecretSaveRequest_unstable | DictationSecretDeleteRequest_unstable | DictationModelsListRequest_unstable | DictationModelDownloadRequest_unstable | DictationModelDownloadProgressRequest_unstable | DictationModelCancelRequest_unstable | DictationModelDeleteRequest_unstable | DictationModelSelectRequest_unstable | ConfigReadRequest_unstable | ConfigWriteRequest_unstable | {
         [key: string]: unknown;
     } | null;
 };
 
 export type ExtResponse = {
     id: string;
-    result?: EmptyResponse | GetToolsResponse_unstable | GooseToolCallResponse_unstable | ReadResourceResponse_unstable | GetConfigExtensionsResponse_unstable | GetAvailableExtensionsResponse_unstable | GetSessionExtensionsResponse_unstable | ListProvidersResponse_unstable | ProviderSupportedModelsListResponse_unstable | ProviderCatalogListResponse_unstable | ProviderSetupCatalogListResponse_unstable | ProviderCatalogTemplateResponse_unstable | CustomProviderCreateResponse_unstable | CustomProviderReadResponse_unstable | CustomProviderUpdateResponse_unstable | CustomProviderDeleteResponse_unstable | RefreshProviderInventoryResponse_unstable | ProviderConfigReadResponse_unstable | ProviderConfigStatusResponse_unstable | ProviderConfigChangeResponse_unstable | PreferencesReadResponse_unstable | DefaultsReadResponse_unstable | OnboardingImportScanResponse_unstable | OnboardingImportApplyResponse_unstable | ExportSessionResponse_unstable | ImportSessionResponse_unstable | CreateSourceResponse_unstable | ListSourcesResponse_unstable | UpdateSourceResponse_unstable | ExportSourceResponse_unstable | ImportSourcesResponse_unstable | DictationTranscribeResponse_unstable | DictationConfigResponse_unstable | DictationModelsListResponse_unstable | DictationModelDownloadProgressResponse_unstable | unknown;
+    result?: EmptyResponse | GetToolsResponse_unstable | GooseToolCallResponse_unstable | ReadResourceResponse_unstable | GetConfigExtensionsResponse_unstable | GetAvailableExtensionsResponse_unstable | GetSessionExtensionsResponse_unstable | ListProvidersResponse_unstable | ProviderSupportedModelsListResponse_unstable | ProviderCatalogListResponse_unstable | ProviderSetupCatalogListResponse_unstable | ProviderCatalogTemplateResponse_unstable | CustomProviderCreateResponse_unstable | CustomProviderReadResponse_unstable | CustomProviderUpdateResponse_unstable | CustomProviderDeleteResponse_unstable | RefreshProviderInventoryResponse_unstable | ProviderConfigReadResponse_unstable | ProviderConfigStatusResponse_unstable | ProviderConfigChangeResponse_unstable | PreferencesReadResponse_unstable | DefaultsReadResponse_unstable | OnboardingImportScanResponse_unstable | OnboardingImportApplyResponse_unstable | ExportSessionResponse_unstable | ImportSessionResponse_unstable | CreateSourceResponse_unstable | ListSourcesResponse_unstable | UpdateSourceResponse_unstable | ExportSourceResponse_unstable | ImportSourcesResponse_unstable | DictationTranscribeResponse_unstable | DictationConfigResponse_unstable | DictationModelsListResponse_unstable | DictationModelDownloadProgressResponse_unstable | ConfigReadResponse_unstable | unknown;
 } | {
     error: {
         code: number;

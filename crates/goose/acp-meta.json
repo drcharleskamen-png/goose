@@ -294,6 +294,16 @@
       "method": "_goose/unstable/dictation/models/select",
       "requestType": "DictationModelSelectRequest_unstable",
       "responseType": "EmptyResponse"
+    },
+    {
+      "method": "_goose/unstable/config/read",
+      "requestType": "ConfigReadRequest_unstable",
+      "responseType": "ConfigReadResponse_unstable"
+    },
+    {
+      "method": "_goose/unstable/config/write",
+      "requestType": "ConfigWriteRequest_unstable",
+      "responseType": "ConfigReadResponse_unstable"
     }
   ],
   "notifications": [

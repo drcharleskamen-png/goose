@@ -13,7 +13,7 @@ use crate::recipe::{RecipeParameter, RecipeParameterRequirement, Response};
 
 const SLASH_COMMANDS_CONFIG_KEY: &str = "slash_commands";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, utoipa::ToSchema)]
 pub struct SlashCommandMapping {
     pub command: String,
     pub recipe_path: String,

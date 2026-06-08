@@ -12,6 +12,9 @@ import type {
   AddConfigExtensionRequest_unstable,
   AddExtensionRequest_unstable,
   ArchiveSessionRequest_unstable,
+  ConfigReadRequest_unstable,
+  ConfigReadResponse_unstable,
+  ConfigWriteRequest_unstable,
   CreateSourceRequest_unstable,
   CreateSourceResponse_unstable,
   CustomProviderCreateRequest_unstable,
@@ -105,6 +108,7 @@ import type {
   UpdateWorkingDirRequest_unstable,
 } from './types.gen.js';
 import {
+  zConfigReadResponse_unstable,
   zCreateSourceResponse_unstable,
   zCustomProviderCreateResponse_unstable,
   zCustomProviderDeleteResponse_unstable,
@@ -739,6 +743,30 @@ export class GooseExtClient {
       "_goose/unstable/dictation/models/select",
       params,
     );
+  }
+
+  async configRead_unstable(
+    params: ConfigReadRequest_unstable,
+  ): Promise<ConfigReadResponse_unstable> {
+    const raw = await this.conn.extMethod(
+      "_goose/unstable/config/read",
+      params,
+    );
+    return zConfigReadResponse_unstable.parse(
+      raw,
+    ) as ConfigReadResponse_unstable;
+  }
+
+  async configWrite_unstable(
+    params: ConfigWriteRequest_unstable,
+  ): Promise<ConfigReadResponse_unstable> {
+    const raw = await this.conn.extMethod(
+      "_goose/unstable/config/write",
+      params,
+    );
+    return zConfigReadResponse_unstable.parse(
+      raw,
+    ) as ConfigReadResponse_unstable;
   }
 }
 

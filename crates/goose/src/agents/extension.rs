@@ -7,6 +7,7 @@ use crate::config::Config;
 use rmcp::model::Tool;
 use rmcp::service::ClientInitializeError;
 use rmcp::ServiceError as ClientError;
+use schemars::JsonSchema;
 use serde::Deserializer;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -58,12 +59,19 @@ pub enum ExtensionError {
 
 pub type ExtensionResult<T> = Result<T, ExtensionError>;
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default, ToSchema, PartialEq)]
+#[derive(Debug, Clone, Serialize, Default, ToSchema, PartialEq, JsonSchema)]
 pub struct Envs {
     /// A map of environment variables to set, e.g. API_KEY -> some_secret, HOST -> host
     #[serde(default)]
     #[serde(flatten)]
     map: HashMap<String, String>,
+}
+
+impl<'de> serde::Deserialize<'de> for Envs {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let map = HashMap::<String, String>::deserialize(deserializer)?;
+        Ok(Envs::new(map))
+    }
 }
 
 impl Envs {
@@ -148,7 +156,7 @@ impl Envs {
 }
 
 /// Represents the different types of MCP extensions that can be added to the manager
-#[derive(Debug, Clone, Deserialize, Serialize, ToSchema, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema, PartialEq, JsonSchema)]
 #[serde(tag = "type")]
 pub enum ExtensionConfig {
     /// SSE transport is no longer supported - kept only for config file compatibility
@@ -888,6 +896,18 @@ available_tools: []
         .unwrap();
         cfg.set("MY_SECRET", &"secret_value", true).unwrap();
         assert_eq!(config.resolve(&cfg).await.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_envs_deserialize_filters_disallowed_keys() {
+        let json =
+            r#"{"VALID_KEY": "value", "LD_PRELOAD": "/evil.so", "NODE_OPTIONS": "--require evil"}"#;
+        let envs: super::Envs = serde_json::from_str(json).unwrap();
+        let map = envs.get_env();
+        assert!(map.contains_key("VALID_KEY"));
+        assert!(!map.contains_key("LD_PRELOAD"));
+        assert!(!map.contains_key("NODE_OPTIONS"));
+        assert_eq!(map.len(), 1);
     }
 
     #[test]

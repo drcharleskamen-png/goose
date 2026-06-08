@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import path from 'node:path';
 import { setupGoosed, type GoosedTestContext } from './setup';
 import {
   status,
@@ -48,7 +49,9 @@ describe('goosed API integration tests', () => {
   let ctx: GoosedTestContext;
 
   beforeAll(async () => {
+    process.env.GOOSED_BINARY ??= path.resolve(__dirname, '..', '..', '..', '..', 'target', 'debug', 'goosed');
     const configYaml = `
+GOOSE_DISABLE_KEYRING: true
 extensions:
   developer:
     enabled: true
@@ -62,7 +65,7 @@ extensions:
 `;
 
     ctx = await setupGoosed({ pathOverride: '/usr/bin:/bin', configYaml });
-  });
+  }, 120_000);
 
   afterAll(async () => {
     await ctx.cleanup();

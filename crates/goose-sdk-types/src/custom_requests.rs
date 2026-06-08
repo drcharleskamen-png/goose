@@ -4,6 +4,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+fn goose_mode_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::from_value(serde_json::json!({
+        "type": "string",
+        "enum": ["auto", "approve", "smart_approve", "chat"]
+    }))
+    .unwrap()
+}
+
 /// Schema descriptor for a single custom method, produced by the
 /// `#[custom_methods]` macro's generated `custom_method_schemas()` function.
 ///
@@ -1426,4 +1434,926 @@ pub struct DictationModelDeleteRequest {
 pub struct DictationModelSelectRequest {
     pub provider: String,
     pub model_id: String,
+}
+
+/// Read the full typed config from disk.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcRequest)]
+#[request(method = "_goose/unstable/config/read", response = ConfigReadResponse)]
+pub struct ConfigReadRequest {}
+
+/// Sparse patch: only fields present in the payload are written to disk.
+/// Missing fields and explicit null both leave the existing value unchanged.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcRequest)]
+#[request(method = "_goose/unstable/config/write", response = ConfigReadResponse)]
+pub struct ConfigWriteRequest {
+    #[serde(flatten)]
+    pub config: ConfigSchemaDto,
+}
+
+/// Response carrying the full typed config.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcResponse)]
+pub struct ConfigReadResponse {
+    #[serde(flatten)]
+    pub config: ConfigSchemaDto,
+}
+
+/// DTO mirroring `GooseConfigSchema` in `crates/goose/src/config/schema.rs`.
+///
+/// All fields are `Option<T>` with `skip_serializing_if = "Option::is_none"` so the
+/// struct can represent sparse patches as well as full reads. Serde rename attributes
+/// match the config key names exactly (UPPER_SNAKE_CASE or lowercase, never camelCase).
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ConfigSchemaDto {
+    // === Core Goose Settings ===
+    #[serde(
+        rename = "GOOSE_PROVIDER",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_provider: Option<String>,
+    #[serde(
+        rename = "GOOSE_MODEL",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_model: Option<String>,
+    #[serde(
+        rename = "GOOSE_MODE",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schemars(schema_with = "goose_mode_schema")]
+    pub goose_mode: Option<String>,
+    #[serde(
+        rename = "GOOSE_MAX_TOKENS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_max_tokens: Option<i32>,
+    #[serde(
+        rename = "GOOSE_CONTEXT_LIMIT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_context_limit: Option<u32>,
+    #[serde(
+        rename = "GOOSE_INPUT_LIMIT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_input_limit: Option<u32>,
+    #[serde(
+        rename = "GOOSE_MAX_TURNS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_max_turns: Option<u32>,
+    #[serde(
+        rename = "GOOSE_MAX_ACTIVE_AGENTS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_max_active_agents: Option<u32>,
+    #[serde(
+        rename = "GOOSE_AUTO_COMPACT_THRESHOLD",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_auto_compact_threshold: Option<f64>,
+    #[serde(
+        rename = "GOOSE_TOOL_PAIR_SUMMARIZATION",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_tool_pair_summarization: Option<bool>,
+    #[serde(
+        rename = "GOOSE_TOOL_CALL_CUTOFF",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_tool_call_cutoff: Option<u32>,
+    #[serde(
+        rename = "GOOSE_STREAM_TIMEOUT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_stream_timeout: Option<u32>,
+    #[serde(
+        rename = "GOOSE_SEARCH_PATHS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_search_paths: Option<Vec<String>>,
+    #[serde(
+        rename = "GOOSE_DISABLE_SESSION_NAMING",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_disable_session_naming: Option<bool>,
+    #[serde(
+        rename = "GOOSE_DISABLE_KEYRING",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_disable_keyring: Option<bool>,
+    #[serde(
+        rename = "GOOSE_TELEMETRY_ENABLED",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_telemetry_enabled: Option<bool>,
+    #[serde(
+        rename = "GOOSE_DEFAULT_EXTENSION_TIMEOUT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_default_extension_timeout: Option<u32>,
+    #[serde(
+        rename = "GOOSE_PROMPT_EDITOR",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_prompt_editor: Option<String>,
+    #[serde(
+        rename = "GOOSE_PROMPT_EDITOR_ALWAYS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_prompt_editor_always: Option<bool>,
+    #[serde(
+        rename = "GOOSE_ALLOWLIST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_allowlist: Option<String>,
+    #[serde(
+        rename = "GOOSE_SYSTEM_PROMPT_FILE_PATH",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_system_prompt_file_path: Option<String>,
+    #[serde(
+        rename = "GOOSE_DEBUG",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_debug: Option<bool>,
+    #[serde(
+        rename = "GOOSE_SHOW_FULL_OUTPUT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_show_full_output: Option<bool>,
+    #[serde(
+        rename = "GOOSE_DISABLE_TOOL_CALL_SUMMARY",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_disable_tool_call_summary: Option<bool>,
+    #[serde(
+        rename = "GOOSE_STATUS_HOOK",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_status_hook: Option<String>,
+    #[serde(
+        rename = "GOOSE_LOCAL_ENABLE_THINKING",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_local_enable_thinking: Option<bool>,
+    #[serde(
+        rename = "GOOSE_DATABRICKS_CLIENT_REQUEST_ID",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_databricks_client_request_id: Option<bool>,
+    #[serde(
+        rename = "CONTEXT_FILE_NAMES",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_file_names: Option<Vec<String>>,
+    #[serde(rename = "EDIT_MODE", default, skip_serializing_if = "Option::is_none")]
+    pub edit_mode: Option<String>,
+    #[serde(
+        rename = "RANDOM_THINKING_MESSAGES",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub random_thinking_messages: Option<bool>,
+    #[serde(
+        rename = "CODE_MODE_TOOL_DISCLOSURE",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub code_mode_tool_disclosure: Option<String>,
+
+    // === mTLS Settings ===
+    #[serde(
+        rename = "GOOSE_CLIENT_CERT_PATH",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_client_cert_path: Option<String>,
+    #[serde(
+        rename = "GOOSE_CLIENT_KEY_PATH",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_client_key_path: Option<String>,
+    #[serde(
+        rename = "GOOSE_CA_CERT_PATH",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_ca_cert_path: Option<String>,
+
+    // === Planner & Subagent Settings ===
+    #[serde(
+        rename = "GOOSE_PLANNER_PROVIDER",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_planner_provider: Option<String>,
+    #[serde(
+        rename = "GOOSE_PLANNER_MODEL",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_planner_model: Option<String>,
+    #[serde(
+        rename = "GOOSE_SUBAGENT_PROVIDER",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_subagent_provider: Option<String>,
+    #[serde(
+        rename = "GOOSE_SUBAGENT_MODEL",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_subagent_model: Option<String>,
+    #[serde(
+        rename = "GOOSE_SUBAGENT_MAX_TURNS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_subagent_max_turns: Option<u32>,
+    #[serde(
+        rename = "GOOSE_MAX_BACKGROUND_TASKS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_max_background_tasks: Option<u32>,
+
+    // === Recipe Settings ===
+    #[serde(
+        rename = "GOOSE_RECIPE_GITHUB_REPO",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_recipe_github_repo: Option<String>,
+    #[serde(
+        rename = "GOOSE_RECIPE_RETRY_TIMEOUT_SECONDS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_recipe_retry_timeout_seconds: Option<u32>,
+    #[serde(
+        rename = "GOOSE_RECIPE_ON_FAILURE_TIMEOUT_SECONDS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_recipe_on_failure_timeout_seconds: Option<u32>,
+
+    // === CLI Settings ===
+    #[serde(
+        rename = "GOOSE_CLI_MIN_PRIORITY",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_cli_min_priority: Option<f32>,
+    #[serde(
+        rename = "GOOSE_CLI_THEME",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_cli_theme: Option<String>,
+    #[serde(
+        rename = "GOOSE_CLI_LIGHT_THEME",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_cli_light_theme: Option<String>,
+    #[serde(
+        rename = "GOOSE_CLI_DARK_THEME",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_cli_dark_theme: Option<String>,
+    #[serde(
+        rename = "GOOSE_CLI_SHOW_COST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_cli_show_cost: Option<bool>,
+    #[serde(
+        rename = "GOOSE_CLI_SHOW_THINKING",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_cli_show_thinking: Option<bool>,
+    #[serde(
+        rename = "GOOSE_CLI_NEWLINE_KEY",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_cli_newline_key: Option<String>,
+
+    // === AI Agent / Thinking Settings ===
+    #[serde(
+        rename = "CLAUDE_CODE_COMMAND",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub claude_code_command: Option<String>,
+    #[serde(
+        rename = "GEMINI_CLI_COMMAND",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub gemini_cli_command: Option<String>,
+    #[serde(
+        rename = "CURSOR_AGENT_COMMAND",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub cursor_agent_command: Option<String>,
+    #[serde(
+        rename = "CODEX_COMMAND",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub codex_command: Option<String>,
+    #[serde(
+        rename = "CODEX_REASONING_EFFORT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub codex_reasoning_effort: Option<String>,
+    #[serde(
+        rename = "CODEX_ENABLE_SKILLS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub codex_enable_skills: Option<String>,
+    #[serde(
+        rename = "CODEX_SKIP_GIT_CHECK",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub codex_skip_git_check: Option<String>,
+    #[serde(
+        rename = "CHATGPT_CODEX_REASONING_EFFORT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub chatgpt_codex_reasoning_effort: Option<String>,
+    #[serde(
+        rename = "CLAUDE_THINKING_TYPE",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub claude_thinking_type: Option<String>,
+    #[serde(
+        rename = "CLAUDE_THINKING_EFFORT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub claude_thinking_effort: Option<String>,
+    #[serde(
+        rename = "CLAUDE_THINKING_BUDGET",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub claude_thinking_budget: Option<i32>,
+    #[serde(
+        rename = "ANTHROPIC_THINKING_BUDGET",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub anthropic_thinking_budget: Option<i32>,
+    #[serde(
+        rename = "GEMINI3_THINKING_LEVEL",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub gemini3_thinking_level: Option<String>,
+    #[serde(
+        rename = "GEMINI25_THINKING_BUDGET",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub gemini25_thinking_budget: Option<i32>,
+    #[serde(
+        rename = "GOOSE_THINKING_EFFORT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub goose_thinking_effort: Option<String>,
+
+    // === Security Settings ===
+    #[serde(
+        rename = "SECURITY_PROMPT_ENABLED",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub security_prompt_enabled: Option<bool>,
+    #[serde(
+        rename = "SECURITY_PROMPT_THRESHOLD",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub security_prompt_threshold: Option<f64>,
+    #[serde(
+        rename = "SECURITY_PROMPT_CLASSIFIER_ENABLED",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub security_prompt_classifier_enabled: Option<bool>,
+    #[serde(
+        rename = "SECURITY_PROMPT_CLASSIFIER_MODEL",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub security_prompt_classifier_model: Option<String>,
+    #[serde(
+        rename = "SECURITY_PROMPT_CLASSIFIER_ENDPOINT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub security_prompt_classifier_endpoint: Option<String>,
+    #[serde(
+        rename = "SECURITY_COMMAND_CLASSIFIER_ENABLED",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub security_command_classifier_enabled: Option<bool>,
+
+    // === Provider Settings ===
+    #[serde(
+        rename = "OPENAI_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub openai_host: Option<String>,
+    #[serde(
+        rename = "OPENAI_BASE_URL",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub openai_base_url: Option<String>,
+    #[serde(
+        rename = "OPENAI_BASE_PATH",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub openai_base_path: Option<String>,
+    #[serde(
+        rename = "OPENAI_ORGANIZATION",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub openai_organization: Option<String>,
+    #[serde(
+        rename = "OPENAI_PROJECT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub openai_project: Option<String>,
+    #[serde(
+        rename = "OPENAI_TIMEOUT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub openai_timeout: Option<u32>,
+    #[serde(
+        rename = "ANTHROPIC_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub anthropic_host: Option<String>,
+    #[serde(
+        rename = "OLLAMA_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub ollama_host: Option<String>,
+    #[serde(
+        rename = "OLLAMA_TIMEOUT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub ollama_timeout: Option<u32>,
+    #[serde(
+        rename = "OLLAMA_STREAM_TIMEOUT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub ollama_stream_timeout: Option<u32>,
+    #[serde(
+        rename = "OLLAMA_STREAM_USAGE",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub ollama_stream_usage: Option<bool>,
+    #[serde(
+        rename = "DATABRICKS_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub databricks_host: Option<String>,
+    #[serde(
+        rename = "DATABRICKS_MAX_RETRIES",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub databricks_max_retries: Option<String>,
+    #[serde(
+        rename = "DATABRICKS_INITIAL_RETRY_INTERVAL_MS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub databricks_initial_retry_interval_ms: Option<String>,
+    #[serde(
+        rename = "DATABRICKS_BACKOFF_MULTIPLIER",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub databricks_backoff_multiplier: Option<String>,
+    #[serde(
+        rename = "DATABRICKS_MAX_RETRY_INTERVAL_MS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub databricks_max_retry_interval_ms: Option<String>,
+    #[serde(
+        rename = "AZURE_OPENAI_ENDPOINT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub azure_openai_endpoint: Option<String>,
+    #[serde(
+        rename = "AZURE_OPENAI_DEPLOYMENT_NAME",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub azure_openai_deployment_name: Option<String>,
+    #[serde(
+        rename = "AZURE_OPENAI_API_VERSION",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub azure_openai_api_version: Option<String>,
+    #[serde(
+        rename = "GOOGLE_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub google_host: Option<String>,
+    #[serde(
+        rename = "GCP_PROJECT_ID",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub gcp_project_id: Option<String>,
+    #[serde(
+        rename = "GCP_LOCATION",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub gcp_location: Option<String>,
+    #[serde(
+        rename = "GCP_MAX_RETRIES",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub gcp_max_retries: Option<String>,
+    #[serde(
+        rename = "GCP_INITIAL_RETRY_INTERVAL_MS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub gcp_initial_retry_interval_ms: Option<String>,
+    #[serde(
+        rename = "GCP_BACKOFF_MULTIPLIER",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub gcp_backoff_multiplier: Option<String>,
+    #[serde(
+        rename = "GCP_MAX_RETRY_INTERVAL_MS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub gcp_max_retry_interval_ms: Option<String>,
+    #[serde(
+        rename = "AWS_REGION",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub aws_region: Option<String>,
+    #[serde(
+        rename = "AWS_PROFILE",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub aws_profile: Option<String>,
+    #[serde(
+        rename = "BEDROCK_MAX_RETRIES",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bedrock_max_retries: Option<u32>,
+    #[serde(
+        rename = "BEDROCK_INITIAL_RETRY_INTERVAL_MS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bedrock_initial_retry_interval_ms: Option<u32>,
+    #[serde(
+        rename = "BEDROCK_BACKOFF_MULTIPLIER",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bedrock_backoff_multiplier: Option<f64>,
+    #[serde(
+        rename = "BEDROCK_MAX_RETRY_INTERVAL_MS",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bedrock_max_retry_interval_ms: Option<u32>,
+    #[serde(
+        rename = "BEDROCK_ENABLE_CACHING",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bedrock_enable_caching: Option<bool>,
+    #[serde(
+        rename = "SAGEMAKER_ENDPOINT_NAME",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub sagemaker_endpoint_name: Option<String>,
+    #[serde(
+        rename = "LITELLM_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub litellm_host: Option<String>,
+    #[serde(
+        rename = "LITELLM_BASE_PATH",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub litellm_base_path: Option<String>,
+    #[serde(
+        rename = "LITELLM_TIMEOUT",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub litellm_timeout: Option<u32>,
+    #[serde(
+        rename = "SNOWFLAKE_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub snowflake_host: Option<String>,
+    #[serde(
+        rename = "GITHUB_COPILOT_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub github_copilot_host: Option<String>,
+    #[serde(
+        rename = "GITHUB_COPILOT_CLIENT_ID",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub github_copilot_client_id: Option<String>,
+    #[serde(
+        rename = "GITHUB_COPILOT_TOKEN_URL",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub github_copilot_token_url: Option<String>,
+    #[serde(rename = "XAI_HOST", default, skip_serializing_if = "Option::is_none")]
+    pub xai_host: Option<String>,
+    #[serde(
+        rename = "OPENROUTER_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub openrouter_host: Option<String>,
+    #[serde(
+        rename = "VENICE_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub venice_host: Option<String>,
+    #[serde(
+        rename = "VENICE_BASE_PATH",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub venice_base_path: Option<String>,
+    #[serde(
+        rename = "VENICE_MODELS_PATH",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub venice_models_path: Option<String>,
+    #[serde(
+        rename = "TETRATE_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tetrate_host: Option<String>,
+    #[serde(
+        rename = "AVIAN_HOST",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub avian_host: Option<String>,
+    #[serde(rename = "HF_HOST", default, skip_serializing_if = "Option::is_none")]
+    pub hf_host: Option<String>,
+
+    // === Provider Switching (lowercase keys — no serde rename needed) ===
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_provider: Option<String>,
+
+    // === Observability Settings (lowercase keys) ===
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub otel_exporter_otlp_endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub otel_exporter_otlp_timeout: Option<u32>,
+
+    // === Tunnel Settings (lowercase keys) ===
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tunnel_auto_start: Option<bool>,
+
+    // === Structured nested fields ===
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<HashMap<String, ExtensionEntryDto>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slash_commands: Option<Vec<SlashCommandMappingDto>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub experiments: Option<HashMap<String, bool>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub providers: Option<HashMap<String, ProviderEntryDto>>,
+}
+
+/// DTO for a single extension entry (enabled flag + config).
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExtensionEntryDto {
+    pub enabled: bool,
+    #[serde(flatten)]
+    pub config: ExtensionConfigDto,
+}
+
+/// DTO mirroring `ExtensionConfig` from `crates/goose/src/agents/extension.rs`.
+///
+/// `Envs` (a newtype over `HashMap<String, String>` with `#[serde(flatten)]`) is
+/// represented here as a plain `HashMap<String, String>` — the serde-serialized JSON
+/// shape is identical. `Frontend.tools` uses `Vec<serde_json::Value>` instead of
+/// `Vec<rmcp::model::Tool>` to avoid a cross-crate dependency.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type")]
+pub enum ExtensionConfigDto {
+    /// Legacy SSE transport — kept for backwards-compatible reads of existing configs.
+    #[serde(rename = "sse")]
+    Sse {
+        #[serde(default)]
+        name: String,
+        #[serde(default)]
+        description: String,
+        #[serde(default)]
+        uri: Option<String>,
+    },
+    #[serde(rename = "stdio")]
+    Stdio {
+        name: String,
+        #[serde(default)]
+        description: String,
+        cmd: String,
+        args: Vec<String>,
+        #[serde(default)]
+        envs: HashMap<String, String>,
+        #[serde(default)]
+        env_keys: Vec<String>,
+        timeout: Option<u32>,
+        #[serde(default)]
+        bundled: Option<bool>,
+        #[serde(default)]
+        available_tools: Vec<String>,
+    },
+    #[serde(rename = "builtin")]
+    Builtin {
+        name: String,
+        #[serde(default)]
+        description: String,
+        display_name: Option<String>,
+        timeout: Option<u32>,
+        #[serde(default)]
+        bundled: Option<bool>,
+        #[serde(default)]
+        available_tools: Vec<String>,
+    },
+    #[serde(rename = "platform")]
+    Platform {
+        name: String,
+        #[serde(default)]
+        description: String,
+        display_name: Option<String>,
+        #[serde(default)]
+        bundled: Option<bool>,
+        #[serde(default)]
+        available_tools: Vec<String>,
+    },
+    #[serde(rename = "streamable_http")]
+    StreamableHttp {
+        name: String,
+        #[serde(default)]
+        description: String,
+        uri: String,
+        #[serde(default)]
+        envs: HashMap<String, String>,
+        #[serde(default)]
+        env_keys: Vec<String>,
+        #[serde(default)]
+        headers: HashMap<String, String>,
+        timeout: Option<u32>,
+        #[serde(default)]
+        socket: Option<String>,
+        #[serde(default)]
+        bundled: Option<bool>,
+        #[serde(default)]
+        available_tools: Vec<String>,
+    },
+    #[serde(rename = "frontend")]
+    Frontend {
+        name: String,
+        #[serde(default)]
+        description: String,
+        tools: Vec<serde_json::Value>,
+        instructions: Option<String>,
+        #[serde(default)]
+        bundled: Option<bool>,
+        #[serde(default)]
+        available_tools: Vec<String>,
+    },
+    #[serde(rename = "inline_python")]
+    InlinePython {
+        name: String,
+        #[serde(default)]
+        description: String,
+        code: String,
+        timeout: Option<u32>,
+        #[serde(default)]
+        dependencies: Option<Vec<String>>,
+        #[serde(default)]
+        available_tools: Vec<String>,
+    },
+}
+
+impl Default for ExtensionConfigDto {
+    fn default() -> Self {
+        Self::Builtin {
+            name: String::new(),
+            description: String::new(),
+            display_name: None,
+            timeout: None,
+            bundled: None,
+            available_tools: Vec::new(),
+        }
+    }
+}
+
+/// DTO for a slash command mapping entry.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SlashCommandMappingDto {
+    pub command: String,
+    pub recipe_path: String,
+}
+
+/// DTO for a provider entry in the `providers` map.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ProviderEntryDto {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub configured: bool,
 }

@@ -201,6 +201,11 @@ jobs:
           pnpm test
           pnpm run typecheck:test
 
+      - name: Check Config Schema is Up-to-Date
+        run: |
+          source ./bin/activate-hermit
+          just check-config-schema
+
   desktop-lint:
     name: Test and Lint Electron Desktop App
     runs-on: macos-latest

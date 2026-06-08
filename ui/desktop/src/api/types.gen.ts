@@ -985,6 +985,19 @@ export type ProviderDetails = {
 export type ProviderEngine = 'openai' | 'ollama' | 'anthropic';
 
 /**
+ * A single provider's persisted configuration within the `providers:` block.
+ *
+ * The `providers` block in config.yaml is the authoritative source for
+ * per-provider settings, replacing the old flat-key scheme where switching
+ * providers destructively overwrote `GOOSE_PROVIDER` / `GOOSE_MODEL`.
+ */
+export type ProviderEntry = {
+    configured?: boolean;
+    enabled?: boolean;
+    model?: string;
+};
+
+/**
  * Metadata about a provider's configuration requirements and capabilities
  */
 export type ProviderMetadata = {
@@ -1443,6 +1456,11 @@ export type SlashCommand = {
     command: string;
     command_type: CommandType;
     help: string;
+};
+
+export type SlashCommandMapping = {
+    command: string;
+    recipe_path: string;
 };
 
 export type SlashCommandsResponse = {

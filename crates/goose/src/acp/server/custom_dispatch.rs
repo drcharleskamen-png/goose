@@ -481,4 +481,19 @@ impl GooseAcpAgent {
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
         self.on_dictation_model_select(req).await
     }
+
+    #[custom_method(ConfigReadRequest)]
+    async fn dispatch_config_read(
+        &self,
+    ) -> Result<ConfigReadResponse, agent_client_protocol::Error> {
+        self.on_config_read().await
+    }
+
+    #[custom_method(ConfigWriteRequest)]
+    async fn dispatch_config_write(
+        &self,
+        req: ConfigWriteRequest,
+    ) -> Result<ConfigReadResponse, agent_client_protocol::Error> {
+        self.on_config_write(req).await
+    }
 }

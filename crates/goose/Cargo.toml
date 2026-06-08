@@ -275,6 +275,10 @@ path = "src/bin/build_canonical_models.rs"
 name = "generate-acp-schema"
 path = "src/bin/generate_acp_schema.rs"
 
+[[bin]]
+name = "generate-config-schema"
+path = "src/bin/generate_config_schema.rs"
+
 [package.metadata.cargo-machete]
 ignored = [
     # Used only on windows
