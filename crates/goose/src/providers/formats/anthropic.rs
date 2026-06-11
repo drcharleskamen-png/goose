@@ -615,7 +615,7 @@ fn apply_thinking_config(
         ThinkingType::Disabled => {}
     }
 
-    if options.preserve_thinking_context {
+    if options.preserve_thinking_context && !model_config.reasoning_disabled() {
         if !obj.contains_key("thinking") {
             let budget_tokens = thinking_budget_tokens(model_config);
             obj.insert("max_tokens".to_string(), json!(max_tokens + budget_tokens));

@@ -340,7 +340,8 @@ impl ModelConfig {
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| fast_model_name.to_string());
-        let fast_config = ModelConfig::new(&name)?.with_canonical_limits(provider_name);
+        let mut fast_config = ModelConfig::new(&name)?.with_canonical_limits(provider_name);
+        fast_config.reasoning = Some(false);
         self.fast_model_config = Some(Box::new(fast_config));
         Ok(self)
     }
@@ -469,6 +470,10 @@ impl ModelConfig {
                 serde_json::json!(effort.to_string()),
             );
         }
+    }
+
+    pub fn reasoning_disabled(&self) -> bool {
+        self.reasoning == Some(false)
     }
 
     pub fn thinking_effort(&self) -> Option<ThinkingEffort> {
@@ -665,6 +670,17 @@ mod tests {
         assert_eq!(fast_config.context_limit, Some(4096));
         assert_eq!(fast_config.max_tokens, Some(1024));
         assert_eq!(config.use_fast_model().model_name, "fast-model");
+    }
+
+    #[test]
+    fn with_fast_disables_thinking_even_when_effort_set() {
+        let _guard = env_lock::lock_env([("GOOSE_THINKING_EFFORT", Some("high"))]);
+        let config = ModelConfig::new("claude-sonnet-4-5")
+            .unwrap()
+            .with_fast("claude-haiku-4-5", "anthropic")
+            .unwrap();
+
+        assert_eq!(config.use_fast_model().reasoning, Some(false));
     }
 
     mod thinking_effort_tests {
