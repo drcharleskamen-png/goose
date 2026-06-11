@@ -25,21 +25,12 @@ impl TreeTool {
         Self
     }
 
-    pub fn tree(&self, params: TreeParams) -> CallToolResult {
-        let root = PathBuf::from(&params.path);
-        self.tree_at(root, params.depth)
-    }
-
-    pub fn tree_with_cwd(&self, params: TreeParams, working_dir: Option<&Path>) -> CallToolResult {
+    pub fn tree(&self, params: TreeParams, working_dir: &Path) -> CallToolResult {
         let path = PathBuf::from(&params.path);
         let root = if path.is_absolute() {
             path
         } else {
-            working_dir
-                .map(Path::to_path_buf)
-                .or_else(|| std::env::current_dir().ok())
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(path)
+            working_dir.join(path)
         };
         self.tree_at(root, params.depth)
     }
@@ -249,10 +240,13 @@ mod tests {
         let dir = setup_tree();
         let tool = TreeTool::new();
 
-        let result = tool.tree(TreeParams {
-            path: dir.path().display().to_string(),
-            depth: 2,
-        });
+        let result = tool.tree(
+            TreeParams {
+                path: ".".to_string(),
+                depth: 2,
+            },
+            dir.path(),
+        );
 
         let text = extract_text(&result);
         assert!(text.contains("src/"));
@@ -267,10 +261,13 @@ mod tests {
         fs::write(dir.path().join("a/b/c/deep.rs"), "fn deep() {}\n").unwrap();
 
         let tool = TreeTool::new();
-        let result = tool.tree(TreeParams {
-            path: dir.path().display().to_string(),
-            depth: 1,
-        });
+        let result = tool.tree(
+            TreeParams {
+                path: ".".to_string(),
+                depth: 1,
+            },
+            dir.path(),
+        );
 
         let text = extract_text(&result);
         assert!(text.contains("a/"));
@@ -288,10 +285,13 @@ mod tests {
         fs::write(dir.path().join("debug.log"), "hidden\n").unwrap();
 
         let tool = TreeTool::new();
-        let result = tool.tree(TreeParams {
-            path: dir.path().display().to_string(),
-            depth: 2,
-        });
+        let result = tool.tree(
+            TreeParams {
+                path: ".".to_string(),
+                depth: 2,
+            },
+            dir.path(),
+        );
 
         let text = extract_text(&result);
         assert!(text.contains("visible.rs"));

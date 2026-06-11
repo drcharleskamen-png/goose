@@ -6,6 +6,7 @@ pub mod tree;
 use crate::agents::extension::PlatformExtensionContext;
 use crate::agents::mcp_client::{Error, McpClientTrait};
 use crate::agents::ToolCallContext;
+use crate::session::extension_data::{DeveloperState, ExtensionState};
 use anyhow::Result;
 use async_trait::async_trait;
 use edit::{EditTools, FileEditParams, FileWriteParams};
@@ -17,7 +18,7 @@ use rmcp::model::{
 };
 use schemars::{schema_for, JsonSchema};
 use serde_json::Value;
-use shell::{shell_display_name, ShellOutput, ShellParams, ShellTool};
+use shell::{shell_display_name, EnvOverlay, ShellOutput, ShellParams, ShellTool};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tree::{TreeParams, TreeTool};
@@ -26,6 +27,7 @@ pub static EXTENSION_NAME: &str = "developer";
 
 pub struct DeveloperClient {
     info: InitializeResult,
+    context: PlatformExtensionContext,
     shell_tool: Arc<ShellTool>,
     edit_tools: Arc<EditTools>,
     tree_tool: Arc<TreeTool>,
@@ -68,13 +70,15 @@ fn developer_instructions() -> &'static str {
 
 impl DeveloperClient {
     pub fn new(context: PlatformExtensionContext) -> Result<Self> {
+        let use_login_shell_path = context.use_login_shell_path;
         let info = InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(EXTENSION_NAME, "1.0.0").with_title("Developer"))
             .with_instructions(developer_instructions());
 
         Ok(Self {
             info,
-            shell_tool: Arc::new(ShellTool::new(context.use_login_shell_path)?),
+            context,
+            shell_tool: Arc::new(ShellTool::new(use_login_shell_path)?),
             edit_tools: Arc::new(EditTools::new()),
             tree_tool: Arc::new(TreeTool::new()),
             image_tool: Arc::new(ImageTool::new()),
@@ -170,6 +174,29 @@ impl DeveloperClient {
             )),
         ]
     }
+
+    async fn load_env_overlay(&self, session_id: &str) -> EnvOverlay {
+        self.context
+            .session_manager
+            .get_session(session_id, false)
+            .await
+            .ok()
+            .and_then(|session| DeveloperState::from_extension_data(&session.extension_data))
+            .map(|state| state.env_overlay)
+            .unwrap_or_default()
+    }
+
+    async fn save_env_overlay(&self, session_id: &str, env_overlay: EnvOverlay) -> Result<()> {
+        let manager = &self.context.session_manager;
+        let mut session = manager.get_session(session_id, false).await?;
+        DeveloperState::new(env_overlay).to_extension_data(&mut session.extension_data)?;
+        manager
+            .update(session_id)
+            .extension_data(session.extension_data)
+            .apply()
+            .await?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -192,40 +219,56 @@ impl McpClientTrait for DeveloperClient {
         ctx: &ToolCallContext,
         name: &str,
         arguments: Option<JsonObject>,
-        _cancel_token: CancellationToken,
+        cancel_token: CancellationToken,
     ) -> Result<CallToolResult, Error> {
-        let working_dir = ctx.working_dir.as_deref();
+        let Some(working_dir) = ctx.working_dir.as_deref() else {
+            return Ok(CallToolResult::error(vec![Content::text(
+                "Error: developer tools require a working directory",
+            )
+            .with_priority(0.0)]));
+        };
         match name {
             "shell" => match Self::parse_args::<ShellParams>(arguments) {
-                Ok(params) => Ok(self.shell_tool.shell_with_cwd(params, working_dir).await),
+                Ok(params) => {
+                    let env_overlay = self.load_env_overlay(&ctx.session_id).await;
+                    let execution = self
+                        .shell_tool
+                        .shell(params, working_dir, &env_overlay, cancel_token)
+                        .await;
+                    if let Some(env_overlay) = execution.env_overlay {
+                        if let Err(error) =
+                            self.save_env_overlay(&ctx.session_id, env_overlay).await
+                        {
+                            tracing::warn!("failed to save developer shell environment: {error}");
+                        }
+                    }
+                    Ok(execution.result)
+                }
                 Err(error) => Ok(ShellTool::error_result(&format!("Error: {error}"), None)),
             },
             "write" => match Self::parse_args::<FileWriteParams>(arguments) {
-                Ok(params) => Ok(self.edit_tools.file_write_with_cwd(params, working_dir)),
+                Ok(params) => Ok(self.edit_tools.file_write(params, working_dir)),
                 Err(error) => Ok(CallToolResult::error(vec![Content::text(format!(
                     "Error: {error}"
                 ))
                 .with_priority(0.0)])),
             },
             "edit" => match Self::parse_args::<FileEditParams>(arguments) {
-                Ok(params) => Ok(self.edit_tools.file_edit_with_cwd(params, working_dir)),
+                Ok(params) => Ok(self.edit_tools.file_edit(params, working_dir)),
                 Err(error) => Ok(CallToolResult::error(vec![Content::text(format!(
                     "Error: {error}"
                 ))
                 .with_priority(0.0)])),
             },
             "tree" => match Self::parse_args::<TreeParams>(arguments) {
-                Ok(params) => Ok(self.tree_tool.tree_with_cwd(params, working_dir)),
+                Ok(params) => Ok(self.tree_tool.tree(params, working_dir)),
                 Err(error) => Ok(CallToolResult::error(vec![Content::text(format!(
                     "Error: {error}"
                 ))
                 .with_priority(0.0)])),
             },
             "read_image" => match Self::parse_args::<ImageReadParams>(arguments) {
-                Ok(params) => Ok(self
-                    .image_tool
-                    .image_read_with_cwd(params, working_dir)
-                    .await),
+                Ok(params) => Ok(self.image_tool.image_read(params, working_dir).await),
                 Err(error) => Ok(CallToolResult::error(vec![Content::text(format!(
                     "Error: {error}"
                 ))
@@ -347,5 +390,71 @@ mod tests {
         let observed = std::fs::canonicalize(first_text(&result)).unwrap();
         let expected = std::fs::canonicalize(&cwd).unwrap();
         assert_eq!(observed, expected);
+    }
+
+    #[cfg(not(windows))]
+    fn process_exists(pid: i32) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn developer_client_cancels_shell_tool_and_child_processes() {
+        let temp = tempfile::tempdir().unwrap();
+        let client = DeveloperClient::new(test_context(temp.path().join("sessions"))).unwrap();
+        let cwd = temp.path().join("workspace");
+        fs::create_dir_all(&cwd).unwrap();
+
+        let ctx = ToolCallContext::new("session".to_owned(), Some(cwd.clone()), None);
+        let token = CancellationToken::new();
+        let pid_file = cwd.join("pid");
+        let mut call = Box::pin(client.call_tool(
+            &ctx,
+            "shell",
+            Some(object!({
+                "command": "sleep 300 & echo $! > pid; wait"
+            })),
+            token.clone(),
+        ));
+
+        let started = std::time::Instant::now();
+        let sleep_pid = loop {
+            tokio::select! {
+                result = &mut call => {
+                    let _ = result.expect("shell tool call should not fail");
+                    panic!("shell tool call finished before cancellation");
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {
+                    if let Ok(raw_pid) = fs::read_to_string(&pid_file) {
+                        break raw_pid.trim().parse::<i32>().unwrap();
+                    }
+                    assert!(
+                        started.elapsed() < std::time::Duration::from_secs(5),
+                        "shell command did not write child pid"
+                    );
+                }
+            }
+        };
+
+        assert!(process_exists(sleep_pid));
+        token.cancel();
+        let result = call.await.unwrap();
+
+        assert_eq!(result.is_error, Some(true));
+        assert!(first_text(&result).contains("Command cancelled"));
+
+        let cleanup_started = std::time::Instant::now();
+        while process_exists(sleep_pid)
+            && cleanup_started.elapsed() < std::time::Duration::from_secs(5)
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            !process_exists(sleep_pid),
+            "cancelling the shell tool should kill child processes"
+        );
     }
 }

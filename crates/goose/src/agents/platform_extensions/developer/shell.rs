@@ -1,6 +1,6 @@
-#[cfg(windows)]
-use std::path::Path;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(not(windows))]
@@ -18,8 +18,14 @@ use tokio::sync::OnceCell;
 #[cfg(not(windows))]
 use tokio::task::JoinHandle;
 use tokio_stream::{wrappers::SplitStream, StreamExt};
+use tokio_util::sync::CancellationToken;
 
-use crate::subprocess::SubprocessExt;
+use crate::subprocess::configure_subprocess;
+
+pub(crate) type EnvOverlay = HashMap<String, Option<String>>;
+
+#[cfg(not(windows))]
+const ENV_CAPTURE_PATH_VAR: &str = "__GOOSE_ENV_AFTER";
 
 /// Check if the current process is running inside a Flatpak sandbox.
 ///
@@ -186,6 +192,10 @@ pub struct ShellOutput {
     #[serde(default)]
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub timed_out: bool,
+    /// True if the command was killed because the tool call was cancelled.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub cancelled: bool,
     /// True if output collection was cut short after the shell exited.
     #[serde(default)]
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -318,6 +328,11 @@ pub struct ShellTool {
     login_path: LoginPath,
 }
 
+pub(crate) struct ShellExecution {
+    pub(crate) result: CallToolResult,
+    pub(crate) env_overlay: Option<EnvOverlay>,
+}
+
 impl ShellTool {
     pub fn new(use_login_shell_path: bool) -> std::io::Result<Self> {
         Ok(Self {
@@ -342,17 +357,18 @@ impl ShellTool {
         })
     }
 
-    pub async fn shell(&self, params: ShellParams) -> CallToolResult {
-        self.shell_with_cwd(params, None).await
-    }
-
-    pub async fn shell_with_cwd(
+    pub(crate) async fn shell(
         &self,
         params: ShellParams,
-        working_dir: Option<&std::path::Path>,
-    ) -> CallToolResult {
+        working_dir: &std::path::Path,
+        env_overlay: &EnvOverlay,
+        cancellation_token: CancellationToken,
+    ) -> ShellExecution {
         if params.command.trim().is_empty() {
-            return Self::error_result("Command cannot be empty.", None);
+            return ShellExecution {
+                result: Self::error_result("Command cannot be empty.", None),
+                env_overlay: None,
+            };
         }
 
         #[cfg(not(windows))]
@@ -362,16 +378,36 @@ impl ShellTool {
         #[cfg(windows)]
         let login_path_ref: Option<&str> = None;
 
+        #[cfg(windows)]
+        let env_overlay = EnvOverlay::new();
+        #[cfg(windows)]
+        let env_overlay = &env_overlay;
+
         let execution = match run_command(
             &params.command,
             params.timeout_secs,
             working_dir,
             login_path_ref,
+            &env_overlay,
+            self.output_dir.path(),
+            cancellation_token,
         )
         .await
         {
             Ok(execution) => execution,
-            Err(error) => return Self::error_result(&error, None),
+            Err(error) => {
+                return ShellExecution {
+                    result: Self::error_result(&error, None),
+                    env_overlay: None,
+                };
+            }
+        };
+
+        let next_env_overlay = if let Some(env_after) = &execution.env_after {
+            let base_env = base_environment(login_path_ref);
+            Some(diff_environment(&base_env, env_after))
+        } else {
+            None
         };
 
         // Derive stdout, stderr, and interleaved display from the single tagged-line buffer
@@ -387,7 +423,12 @@ impl ShellTool {
         } else {
             match truncate_output(&raw_stdout, &format!("stdout-{slot}"), output_dir) {
                 Ok(r) => r,
-                Err(error) => return Self::error_result(&error, None),
+                Err(error) => {
+                    return ShellExecution {
+                        result: Self::error_result(&error, None),
+                        env_overlay: next_env_overlay,
+                    };
+                }
             }
         };
         let stderr_result = if raw_stderr.is_empty() {
@@ -398,7 +439,12 @@ impl ShellTool {
         } else {
             match truncate_output(&raw_stderr, &format!("stderr-{slot}"), output_dir) {
                 Ok(r) => r,
-                Err(error) => return Self::error_result(&error, None),
+                Err(error) => {
+                    return ShellExecution {
+                        result: Self::error_result(&error, None),
+                        env_overlay: next_env_overlay,
+                    };
+                }
             }
         };
 
@@ -407,6 +453,7 @@ impl ShellTool {
             stderr: stderr_result.text,
             exit_code: execution.exit_code,
             timed_out: execution.timed_out,
+            cancelled: execution.cancelled,
             output_truncated: execution.output_truncated,
             output_collection_error: execution.output_collection_error.clone(),
         };
@@ -414,7 +461,12 @@ impl ShellTool {
         let render_result = match render_output(&interleaved, &format!("output-{slot}"), output_dir)
         {
             Ok(r) => r,
-            Err(error) => return Self::error_result(&error, None),
+            Err(error) => {
+                return ShellExecution {
+                    result: Self::error_result(&error, None),
+                    env_overlay: next_env_overlay,
+                };
+            }
         };
         let mut rendered = render_result.text;
 
@@ -430,7 +482,10 @@ impl ShellTool {
         .filter_map(|t| t.as_ref().map(truncation_notice))
         .collect();
 
-        let is_error = if execution.timed_out {
+        let is_error = if execution.cancelled {
+            rendered.push_str("\n\nCommand cancelled");
+            true
+        } else if execution.timed_out {
             if let Some(timeout_secs) = params.timeout_secs {
                 rendered.push_str(&format!(
                     "\n\nCommand timed out after {} seconds",
@@ -467,7 +522,10 @@ impl ShellTool {
             }
             let mut result = CallToolResult::error(error_blocks);
             result.structured_content = structured_content;
-            return result;
+            return ShellExecution {
+                result,
+                env_overlay: next_env_overlay,
+            };
         }
 
         let mut content_blocks = vec![Content::text(rendered).with_priority(0.0)];
@@ -476,7 +534,10 @@ impl ShellTool {
         }
         let mut result = CallToolResult::success(content_blocks);
         result.structured_content = structured_content;
-        result
+        ShellExecution {
+            result,
+            env_overlay: next_env_overlay,
+        }
     }
 
     pub fn error_result(message: &str, exit_code: Option<i32>) -> CallToolResult {
@@ -485,6 +546,7 @@ impl ShellTool {
             stderr: message.to_string(),
             exit_code,
             timed_out: false,
+            cancelled: false,
             output_truncated: false,
             output_collection_error: None,
         };
@@ -499,17 +561,195 @@ struct ExecutionOutput {
     lines: Vec<(bool, String)>,
     exit_code: Option<i32>,
     timed_out: bool,
+    cancelled: bool,
+    env_after: Option<HashMap<String, String>>,
     output_truncated: bool,
     output_collection_error: Option<String>,
+}
+
+#[cfg(not(windows))]
+struct EnvCapture {
+    script: tempfile::NamedTempFile,
+    after: tempfile::NamedTempFile,
+}
+
+#[cfg(not(windows))]
+impl EnvCapture {
+    fn new(command_line: &str, output_dir: &Path) -> Result<Self, String> {
+        let mut script = tempfile::Builder::new()
+            .prefix("shell-command-")
+            .suffix(".sh")
+            .tempfile_in(output_dir)
+            .map_err(|error| format!("Failed to create shell wrapper: {error}"))?;
+        script
+            .write_all(command_line.as_bytes())
+            .map_err(|error| format!("Failed to write shell wrapper: {error}"))?;
+        script
+            .write_all(
+                format!(
+                    "\n__GOOSE_STATUS=$?\nenv -0 > \"${ENV_CAPTURE_PATH_VAR}\"\nexit \"$__GOOSE_STATUS\"\n"
+                )
+                .as_bytes(),
+            )
+            .map_err(|error| format!("Failed to write shell wrapper: {error}"))?;
+        script
+            .flush()
+            .map_err(|error| format!("Failed to write shell wrapper: {error}"))?;
+
+        let after = tempfile::Builder::new()
+            .prefix("shell-env-after-")
+            .tempfile_in(output_dir)
+            .map_err(|error| format!("Failed to create shell env capture: {error}"))?;
+
+        Ok(Self { script, after })
+    }
+
+    fn script_path(&self) -> &Path {
+        self.script.path()
+    }
+
+    fn after_path(&self) -> &Path {
+        self.after.path()
+    }
+
+    fn read_after_env(&self) -> Option<HashMap<String, String>> {
+        let bytes = std::fs::read(self.after_path()).ok()?;
+        if bytes.is_empty() {
+            return None;
+        }
+        Some(parse_env_block(&bytes))
+    }
+}
+
+#[cfg(windows)]
+struct EnvCapture;
+
+#[cfg(windows)]
+impl EnvCapture {
+    fn read_after_env(&self) -> Option<HashMap<String, String>> {
+        None
+    }
+}
+
+fn base_environment(login_path: Option<&str>) -> HashMap<String, String> {
+    let mut env: HashMap<String, String> = std::env::vars().collect();
+    if let Some(path) = login_path {
+        env.insert("PATH".to_string(), path.to_string());
+    }
+    env
+}
+
+#[cfg(not(windows))]
+fn env_updates(login_path: Option<&str>, env_overlay: &EnvOverlay) -> EnvOverlay {
+    let mut updates = env_overlay.clone();
+    if let Some(path) = login_path {
+        updates
+            .entry("PATH".to_string())
+            .or_insert_with(|| Some(path.to_string()));
+    }
+    updates
+}
+
+#[cfg(not(windows))]
+fn apply_command_env(
+    command: &mut tokio::process::Command,
+    login_path: Option<&str>,
+    env_overlay: &EnvOverlay,
+) {
+    for (key, value) in env_updates(login_path, env_overlay) {
+        match value {
+            Some(value) => {
+                command.env(key, value);
+            }
+            None => {
+                command.env_remove(key);
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn apply_flatpak_env(
+    command: &mut tokio::process::Command,
+    login_path: Option<&str>,
+    env_overlay: &EnvOverlay,
+) {
+    for (key, value) in env_updates(login_path, env_overlay) {
+        match value {
+            Some(value) => {
+                command.arg(format!("--env={key}={value}"));
+            }
+            None => {
+                command.arg(format!("--unset-env={key}"));
+            }
+        }
+    }
+}
+
+fn diff_environment(
+    base_env: &HashMap<String, String>,
+    after_env: &HashMap<String, String>,
+) -> EnvOverlay {
+    let keys: HashSet<&String> = base_env.keys().chain(after_env.keys()).collect();
+    keys.into_iter()
+        .filter_map(|key| {
+            let before = base_env.get(key);
+            let after = after_env.get(key);
+            if before == after {
+                None
+            } else {
+                Some((key.clone(), after.cloned()))
+            }
+        })
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn parse_env_block(bytes: &[u8]) -> HashMap<String, String> {
+    bytes
+        .split(|byte| *byte == 0)
+        .filter(|entry| !entry.is_empty())
+        .filter_map(|entry| {
+            let split_at = entry.iter().position(|byte| *byte == b'=')?;
+            let (key, value_with_equals) = entry.split_at(split_at);
+            let value = &value_with_equals[1..];
+            Some((
+                String::from_utf8_lossy(key).into_owned(),
+                String::from_utf8_lossy(value).into_owned(),
+            ))
+        })
+        .filter(|(key, _)| key != ENV_CAPTURE_PATH_VAR)
+        .collect()
 }
 
 async fn run_command(
     command_line: &str,
     timeout_secs: Option<u64>,
-    working_dir: Option<&std::path::Path>,
+    working_dir: &std::path::Path,
     login_path: Option<&str>,
+    env_overlay: &EnvOverlay,
+    output_dir: &std::path::Path,
+    cancellation_token: CancellationToken,
 ) -> Result<ExecutionOutput, String> {
-    let mut command = build_shell_command(command_line, working_dir, login_path);
+    if cancellation_token.is_cancelled() {
+        return Ok(ExecutionOutput {
+            lines: Vec::new(),
+            exit_code: None,
+            timed_out: false,
+            cancelled: true,
+            env_after: None,
+            output_truncated: false,
+            output_collection_error: None,
+        });
+    }
+
+    let (mut command, env_capture) = build_shell_command(
+        command_line,
+        working_dir,
+        login_path,
+        env_overlay,
+        output_dir,
+    )?;
 
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
@@ -533,25 +773,35 @@ async fn run_command(
     let abort_handle = output_task.abort_handle();
 
     let mut timed_out = false;
-    let exit_code = if let Some(timeout_secs) = timeout_secs.filter(|value| *value > 0) {
-        match tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait()).await {
-            Ok(wait_result) => wait_result
-                .map_err(|error| format!("Failed waiting on shell command: {}", error))?
-                .code(),
-            Err(_) => {
-                timed_out = true;
-                let _ = child.start_kill();
-                let _ = child.wait().await;
-                None
-            }
+    let mut cancelled = false;
+    let timeout = async {
+        if let Some(timeout_secs) = timeout_secs.filter(|value| *value > 0) {
+            tokio::time::sleep(Duration::from_secs(timeout_secs)).await;
+        } else {
+            std::future::pending::<()>().await
         }
-    } else {
-        child
-            .wait()
-            .await
-            .map_err(|error| format!("Failed waiting on shell command: {}", error))?
-            .code()
     };
+
+    let exit_code = tokio::select! {
+        wait_result = child.wait() => {
+            wait_result
+                .map_err(|error| format!("Failed waiting on shell command: {}", error))?
+                .code()
+        }
+        _ = timeout => {
+            timed_out = true;
+            None
+        }
+        _ = cancellation_token.cancelled() => {
+            cancelled = true;
+            None
+        }
+    };
+
+    if timed_out || cancelled {
+        kill_child_process(&mut child);
+        let _ = child.wait().await;
+    }
 
     const OUTPUT_DRAIN_TIMEOUT_MILLIS: u64 = 500;
     let mut output_collection_error = None;
@@ -589,16 +839,41 @@ async fn run_command(
         lines,
         exit_code,
         timed_out,
+        cancelled,
+        env_after: env_capture.as_ref().and_then(EnvCapture::read_after_env),
         output_truncated,
         output_collection_error,
     })
 }
 
+fn kill_child_process(child: &mut tokio::process::Child) {
+    #[cfg(unix)]
+    {
+        if let Some(pid) = child.id() {
+            let process_group = format!("-{pid}");
+            if std::process::Command::new("kill")
+                .args(["-KILL", &process_group])
+                .status()
+                .is_ok_and(|status| status.success())
+            {
+                return;
+            }
+        }
+    }
+
+    let _ = child.start_kill();
+}
+
 fn build_shell_command(
     command_line: &str,
-    working_dir: Option<&std::path::Path>,
+    working_dir: &std::path::Path,
     login_path: Option<&str>,
-) -> tokio::process::Command {
+    env_overlay: &EnvOverlay,
+    output_dir: &std::path::Path,
+) -> Result<(tokio::process::Command, Option<EnvCapture>), String> {
+    #[cfg(windows)]
+    let _ = (env_overlay, output_dir);
+
     #[cfg(windows)]
     let mut command = {
         let shell = windows_shell();
@@ -616,46 +891,60 @@ fn build_shell_command(
                 command.args(["-c", command_line]);
             }
         }
-        if let Some(path) = working_dir {
-            command.current_dir(path);
-        }
+        command.current_dir(working_dir);
         if let Some(path) = login_path {
             command.env("PATH", path);
         }
         command
     };
+    #[cfg(windows)]
+    let env_capture = None;
 
     #[cfg(not(windows))]
-    let mut command = {
+    let (mut command, env_capture) = {
         let shell = unix_shell();
+        let env_capture = if unix_shell_flavor(&shell) == UnixShellFlavor::Posix {
+            Some(EnvCapture::new(command_line, output_dir)?)
+        } else {
+            None
+        };
 
         if is_flatpak() {
             let mut command = flatpak_spawn_command();
-            if let Some(dir) = working_dir {
-                command.arg(format!("--directory={}", dir.display()));
+            command.arg(format!("--directory={}", working_dir.display()));
+            apply_flatpak_env(&mut command, login_path, env_overlay);
+            if let Some(env_capture) = &env_capture {
+                command.arg(format!(
+                    "--env={}={}",
+                    ENV_CAPTURE_PATH_VAR,
+                    env_capture.after_path().display()
+                ));
             }
-            if let Some(path) = login_path {
-                command.arg(format!("--env=PATH={}", path));
+            command.arg(&shell);
+            if let Some(env_capture) = &env_capture {
+                command.arg(env_capture.script_path());
+            } else {
+                command.args(unix_shell_command_args(command_line));
             }
-            command
-                .arg(&shell)
-                .args(unix_shell_command_args(command_line));
-            command
+            (command, env_capture)
         } else {
             let mut command = tokio::process::Command::new(shell);
-            command.args(unix_shell_command_args(command_line));
-            if let Some(path) = working_dir {
-                command.current_dir(path);
+            if let Some(env_capture) = &env_capture {
+                command.arg(env_capture.script_path());
+            } else {
+                command.args(unix_shell_command_args(command_line));
             }
-            if let Some(path) = login_path {
-                command.env("PATH", path);
+            command.current_dir(working_dir);
+            apply_command_env(&mut command, login_path, env_overlay);
+            if let Some(env_capture) = &env_capture {
+                command.env(ENV_CAPTURE_PATH_VAR, env_capture.after_path());
             }
-            command
+            (command, env_capture)
         }
     };
 
-    command.set_no_window();
-    command
+    configure_subprocess(&mut command);
+    Ok((command, env_capture))
 }
 
 /// Split tagged lines into (stdout, stderr, interleaved) strings.
@@ -807,12 +1096,19 @@ mod tests {
     #[tokio::test]
     async fn shell_executes_command() {
         let tool = ShellTool::new_for_test().unwrap();
-        let result = tool
-            .shell(ShellParams {
-                command: "echo hello".to_string(),
-                timeout_secs: None,
-            })
+        let dir = tempfile::tempdir().unwrap();
+        let execution = tool
+            .shell(
+                ShellParams {
+                    command: "echo hello".to_string(),
+                    timeout_secs: None,
+                },
+                dir.path(),
+                &EnvOverlay::new(),
+                CancellationToken::new(),
+            )
             .await;
+        let result = execution.result;
 
         assert_eq!(result.is_error, Some(false));
         assert!(extract_text(&result).contains("hello"));
@@ -822,12 +1118,19 @@ mod tests {
     #[tokio::test]
     async fn shell_returns_error_for_non_zero_exit() {
         let tool = ShellTool::new_for_test().unwrap();
-        let result = tool
-            .shell(ShellParams {
-                command: "echo fail && exit 7".to_string(),
-                timeout_secs: None,
-            })
+        let dir = tempfile::tempdir().unwrap();
+        let execution = tool
+            .shell(
+                ShellParams {
+                    command: "echo fail && exit 7".to_string(),
+                    timeout_secs: None,
+                },
+                dir.path(),
+                &EnvOverlay::new(),
+                CancellationToken::new(),
+            )
             .await;
+        let result = execution.result;
 
         assert_eq!(result.is_error, Some(true));
         assert!(extract_text(&result).contains("Command exited with code 7"));
@@ -838,20 +1141,89 @@ mod tests {
     async fn shell_uses_working_dir_for_relative_execution() {
         let dir = tempfile::tempdir().unwrap();
         let tool = ShellTool::new_for_test().unwrap();
-        let result = tool
-            .shell_with_cwd(
+        let execution = tool
+            .shell(
                 ShellParams {
                     command: "pwd".to_string(),
                     timeout_secs: None,
                 },
-                Some(dir.path()),
+                dir.path(),
+                &EnvOverlay::new(),
+                CancellationToken::new(),
             )
             .await;
+        let result = execution.result;
 
         assert_eq!(result.is_error, Some(false));
         let observed = std::fs::canonicalize(extract_text(&result)).unwrap();
         let expected = std::fs::canonicalize(dir.path()).unwrap();
         assert_eq!(observed, expected);
+    }
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn shell_persists_exported_environment_between_calls() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = ShellTool::new_for_test().unwrap();
+        let name = "GOOSE_TEST_ENV_TRACKING_VALUE";
+        let mut env_overlay = EnvOverlay::new();
+
+        let export = tool
+            .shell(
+                ShellParams {
+                    command: format!("export {name}=persisted"),
+                    timeout_secs: None,
+                },
+                dir.path(),
+                &env_overlay,
+                CancellationToken::new(),
+            )
+            .await;
+        assert_eq!(export.result.is_error, Some(false));
+        env_overlay = export.env_overlay.expect("expected env overlay update");
+
+        let read = tool
+            .shell(
+                ShellParams {
+                    command: format!("printf '%s' \"${{{name}}}\""),
+                    timeout_secs: None,
+                },
+                dir.path(),
+                &env_overlay,
+                CancellationToken::new(),
+            )
+            .await;
+        assert_eq!(read.result.is_error, Some(false));
+        assert_eq!(extract_text(&read.result), "persisted");
+        env_overlay = read.env_overlay.expect("expected env overlay update");
+
+        let unset = tool
+            .shell(
+                ShellParams {
+                    command: format!("unset {name}"),
+                    timeout_secs: None,
+                },
+                dir.path(),
+                &env_overlay,
+                CancellationToken::new(),
+            )
+            .await;
+        assert_eq!(unset.result.is_error, Some(false));
+        env_overlay = unset.env_overlay.expect("expected env overlay update");
+
+        let read_after_unset = tool
+            .shell(
+                ShellParams {
+                    command: format!("printf '%s' \"${{{name}-unset}}\""),
+                    timeout_secs: None,
+                },
+                dir.path(),
+                &env_overlay,
+                CancellationToken::new(),
+            )
+            .await;
+        assert_eq!(read_after_unset.result.is_error, Some(false));
+        assert_eq!(extract_text(&read_after_unset.result), "unset");
     }
 
     #[cfg(not(windows))]
@@ -1011,13 +1383,20 @@ mod tests {
         }
 
         let tool = ShellTool::new_for_test().unwrap();
+        let dir = tempfile::tempdir().unwrap();
         let start = std::time::Instant::now();
-        let result = tool
-            .shell(ShellParams {
-                command: "echo before && sleep 300 & echo bgpid:$! && echo after".to_string(),
-                timeout_secs: None,
-            })
+        let execution = tool
+            .shell(
+                ShellParams {
+                    command: "echo before && sleep 300 & echo bgpid:$! && echo after".to_string(),
+                    timeout_secs: None,
+                },
+                dir.path(),
+                &EnvOverlay::new(),
+                CancellationToken::new(),
+            )
             .await;
+        let result = execution.result;
 
         assert!(
             start.elapsed().as_secs() < 10,

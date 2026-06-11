@@ -38,11 +38,7 @@ impl EditTools {
         Self
     }
 
-    pub fn file_read_with_cwd(
-        &self,
-        params: FileReadParams,
-        working_dir: Option<&Path>,
-    ) -> CallToolResult {
+    pub fn file_read(&self, params: FileReadParams, working_dir: &Path) -> CallToolResult {
         let path = resolve_path(&params.path, working_dir);
 
         match fs::read_to_string(&path) {
@@ -58,15 +54,7 @@ impl EditTools {
         }
     }
 
-    pub fn file_write(&self, params: FileWriteParams) -> CallToolResult {
-        self.file_write_with_cwd(params, None)
-    }
-
-    pub fn file_write_with_cwd(
-        &self,
-        params: FileWriteParams,
-        working_dir: Option<&Path>,
-    ) -> CallToolResult {
+    pub fn file_write(&self, params: FileWriteParams, working_dir: &Path) -> CallToolResult {
         let path = resolve_path(&params.path, working_dir);
 
         if let Some(parent) = path.parent() {
@@ -102,15 +90,7 @@ impl EditTools {
         }
     }
 
-    pub fn file_edit(&self, params: FileEditParams) -> CallToolResult {
-        self.file_edit_with_cwd(params, None)
-    }
-
-    pub fn file_edit_with_cwd(
-        &self,
-        params: FileEditParams,
-        working_dir: Option<&Path>,
-    ) -> CallToolResult {
+    pub fn file_edit(&self, params: FileEditParams, working_dir: &Path) -> CallToolResult {
         let path = resolve_path(&params.path, working_dir);
 
         let content = match fs::read_to_string(&path) {
@@ -212,16 +192,12 @@ fn apply_line_limit(content: &str, line: Option<u32>, limit: Option<u32>) -> Str
     lines[start..end].concat()
 }
 
-pub fn resolve_path(path: &str, working_dir: Option<&Path>) -> PathBuf {
+pub fn resolve_path(path: &str, working_dir: &Path) -> PathBuf {
     let path = PathBuf::from(path);
     if path.is_absolute() {
         path
     } else {
-        working_dir
-            .map(Path::to_path_buf)
-            .or_else(|| std::env::current_dir().ok())
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(path)
+        working_dir.join(path)
     }
 }
 
@@ -316,13 +292,13 @@ mod tests {
         fs::write(&path, "line1\nline2\nline3").unwrap();
         let tools = EditTools::new();
 
-        let result = tools.file_read_with_cwd(
+        let result = tools.file_read(
             FileReadParams {
                 path: path.to_string_lossy().to_string(),
                 line: None,
                 limit: None,
             },
-            None,
+            dir.path(),
         );
 
         assert!(!result.is_error.unwrap_or(false));
@@ -336,13 +312,13 @@ mod tests {
         fs::write(&path, "line1\nline2\nline3").unwrap();
         let tools = EditTools::new();
 
-        let result = tools.file_read_with_cwd(
+        let result = tools.file_read(
             FileReadParams {
                 path: path.to_string_lossy().to_string(),
                 line: Some(2),
                 limit: Some(1),
             },
-            None,
+            dir.path(),
         );
 
         assert!(!result.is_error.unwrap_or(false));
@@ -355,10 +331,13 @@ mod tests {
         let path = dir.path().join("new_file.txt");
         let tools = EditTools::new();
 
-        let result = tools.file_write(FileWriteParams {
-            path: path.to_string_lossy().to_string(),
-            content: "Hello, world!\nLine 2".to_string(),
-        });
+        let result = tools.file_write(
+            FileWriteParams {
+                path: path.to_string_lossy().to_string(),
+                content: "Hello, world!\nLine 2".to_string(),
+            },
+            dir.path(),
+        );
 
         assert!(!result.is_error.unwrap_or(false));
         assert!(path.exists());
@@ -372,10 +351,13 @@ mod tests {
         fs::write(&path, "old content").unwrap();
         let tools = EditTools::new();
 
-        let result = tools.file_write(FileWriteParams {
-            path: path.to_string_lossy().to_string(),
-            content: "new content".to_string(),
-        });
+        let result = tools.file_write(
+            FileWriteParams {
+                path: path.to_string_lossy().to_string(),
+                content: "new content".to_string(),
+            },
+            dir.path(),
+        );
 
         assert!(!result.is_error.unwrap_or(false));
         assert_eq!(fs::read_to_string(&path).unwrap(), "new content");
@@ -387,10 +369,13 @@ mod tests {
         let path = dir.path().join("a/b/c/file.txt");
         let tools = EditTools::new();
 
-        let result = tools.file_write(FileWriteParams {
-            path: path.to_string_lossy().to_string(),
-            content: "nested".to_string(),
-        });
+        let result = tools.file_write(
+            FileWriteParams {
+                path: path.to_string_lossy().to_string(),
+                content: "nested".to_string(),
+            },
+            dir.path(),
+        );
 
         assert!(!result.is_error.unwrap_or(false));
         assert!(path.exists());
@@ -403,11 +388,14 @@ mod tests {
         fs::write(&path, "fn foo() {\n    println!(\"hello\");\n}").unwrap();
         let tools = EditTools::new();
 
-        let result = tools.file_edit(FileEditParams {
-            path: path.to_string_lossy().to_string(),
-            before: "println!(\"hello\");".to_string(),
-            after: "println!(\"world\");".to_string(),
-        });
+        let result = tools.file_edit(
+            FileEditParams {
+                path: path.to_string_lossy().to_string(),
+                before: "println!(\"hello\");".to_string(),
+                after: "println!(\"world\");".to_string(),
+            },
+            dir.path(),
+        );
 
         assert!(!result.is_error.unwrap_or(false));
         let content = fs::read_to_string(&path).unwrap();
@@ -422,11 +410,14 @@ mod tests {
         fs::write(&path, "some content").unwrap();
         let tools = EditTools::new();
 
-        let result = tools.file_edit(FileEditParams {
-            path: path.to_string_lossy().to_string(),
-            before: "nonexistent".to_string(),
-            after: "replacement".to_string(),
-        });
+        let result = tools.file_edit(
+            FileEditParams {
+                path: path.to_string_lossy().to_string(),
+                before: "nonexistent".to_string(),
+                after: "replacement".to_string(),
+            },
+            dir.path(),
+        );
 
         assert!(result.is_error.unwrap_or(false));
         let text = extract_text(&result);
@@ -442,11 +433,14 @@ mod tests {
         fs::write(&path, "foo\nbar\nfoo\nbaz").unwrap();
         let tools = EditTools::new();
 
-        let result = tools.file_edit(FileEditParams {
-            path: path.to_string_lossy().to_string(),
-            before: "foo".to_string(),
-            after: "qux".to_string(),
-        });
+        let result = tools.file_edit(
+            FileEditParams {
+                path: path.to_string_lossy().to_string(),
+                before: "foo".to_string(),
+                after: "qux".to_string(),
+            },
+            dir.path(),
+        );
 
         assert!(result.is_error.unwrap_or(false));
         assert_eq!(fs::read_to_string(&path).unwrap(), "foo\nbar\nfoo\nbaz");
@@ -459,11 +453,14 @@ mod tests {
         fs::write(&path, "keep\ndelete me\nkeep").unwrap();
         let tools = EditTools::new();
 
-        let result = tools.file_edit(FileEditParams {
-            path: path.to_string_lossy().to_string(),
-            before: "\ndelete me".to_string(),
-            after: "".to_string(),
-        });
+        let result = tools.file_edit(
+            FileEditParams {
+                path: path.to_string_lossy().to_string(),
+                before: "\ndelete me".to_string(),
+                after: "".to_string(),
+            },
+            dir.path(),
+        );
 
         assert!(!result.is_error.unwrap_or(false));
         assert_eq!(fs::read_to_string(&path).unwrap(), "keep\nkeep");
@@ -474,12 +471,12 @@ mod tests {
         let dir = setup();
         let tools = EditTools::new();
 
-        let result = tools.file_write_with_cwd(
+        let result = tools.file_write(
             FileWriteParams {
                 path: "relative.txt".to_string(),
                 content: "relative write".to_string(),
             },
-            Some(dir.path()),
+            dir.path(),
         );
 
         assert!(!result.is_error.unwrap_or(false));
@@ -495,13 +492,13 @@ mod tests {
         fs::write(dir.path().join("relative-edit.txt"), "before").unwrap();
         let tools = EditTools::new();
 
-        let result = tools.file_edit_with_cwd(
+        let result = tools.file_edit(
             FileEditParams {
                 path: "relative-edit.txt".to_string(),
                 before: "before".to_string(),
                 after: "after".to_string(),
             },
-            Some(dir.path()),
+            dir.path(),
         );
 
         assert!(!result.is_error.unwrap_or(false));

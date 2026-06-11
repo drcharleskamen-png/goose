@@ -99,6 +99,24 @@ impl TodoState {
     }
 }
 
+/// Developer extension state implementation.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeveloperState {
+    #[serde(default)]
+    pub env_overlay: HashMap<String, Option<String>>,
+}
+
+impl ExtensionState for DeveloperState {
+    const EXTENSION_NAME: &'static str = "developer";
+    const VERSION: &'static str = "v0";
+}
+
+impl DeveloperState {
+    pub fn new(env_overlay: HashMap<String, Option<String>>) -> Self {
+        Self { env_overlay }
+    }
+}
+
 /// Enabled extensions state implementation for storing which extensions are active
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnabledExtensionsState {

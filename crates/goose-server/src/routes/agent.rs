@@ -1135,7 +1135,19 @@ async fn call_tool(
         params
     };
 
-    let ctx = goose::agents::ToolCallContext::new(payload.session_id.clone(), None, None);
+    let session = state
+        .session_manager()
+        .get_session(&payload.session_id, false)
+        .await
+        .map_err(|err| ErrorResponse {
+            message: format!("Failed to get session: {}", err),
+            status: StatusCode::NOT_FOUND,
+        })?;
+    let ctx = goose::agents::ToolCallContext::new(
+        payload.session_id.clone(),
+        Some(session.working_dir.clone()),
+        None,
+    );
     let tool_result = agent
         .extension_manager
         .dispatch_tool_call(&ctx, tool_call, CancellationToken::default())
