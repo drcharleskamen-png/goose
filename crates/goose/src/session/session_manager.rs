@@ -577,8 +577,8 @@ pub(crate) fn role_to_string(role: &Role) -> &'static str {
 /// `Message::as_concat_text` yields only `Text` parts, so tool-request,
 /// tool-response, thinking, and image-only messages collapse to an empty
 /// string and return `None`. Internal whitespace and newlines are collapsed to
-/// single spaces, and the result is capped at `max_chars` characters (a
-/// trailing `…` marks truncation) so it can be rendered verbatim by clients.
+/// single spaces, and the result includes at most `max_chars` characters of
+/// content; if truncated, a trailing `…` is appended so it can be rendered verbatim by clients.
 fn message_snippet(message: &Message, max_chars: usize) -> Option<String> {
     let text = message.as_concat_text();
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
