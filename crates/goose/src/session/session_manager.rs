@@ -572,19 +572,25 @@ pub(crate) fn role_to_string(role: &Role) -> &'static str {
     }
 }
 
-/// Build a bounded, single-line snippet from a user-visible message's real text content.
+/// Build a bounded, single-line snippet from user-visible message text.
 ///
-/// `Message::as_concat_text` yields only `Text` parts, so tool-request,
-/// tool-response, thinking, and image-only messages collapse to an empty
-/// string and return `None`. Internal whitespace and newlines are collapsed to
-/// single spaces, and the result includes at most `max_chars` characters of
-/// content; if truncated, a trailing `…` is appended so it can be rendered verbatim by clients.
+/// Tool-request, tool-response, thinking, image-only, and assistant-audience
+/// blocks collapse to an empty string and return `None`. Internal whitespace
+/// and newlines are collapsed to single spaces, and the result includes at most
+/// `max_chars` characters of content; if truncated, a trailing `…` is appended
+/// so it can be rendered verbatim by clients.
 fn message_snippet(message: &Message, max_chars: usize) -> Option<String> {
     if !message.metadata.user_visible {
         return None;
     }
 
-    let text = message.as_concat_text();
+    let text = message
+        .content
+        .iter()
+        .filter_map(|content| content.filter_for_audience(Role::User))
+        .filter_map(|content| content.as_text().map(|text| text.to_string()))
+        .collect::<Vec<_>>()
+        .join("\n");
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if normalized.is_empty() {
         return None;
@@ -3274,6 +3280,19 @@ mod tests {
         message
     }
 
+    fn assistant_audience_text(text: &str) -> MessageContent {
+        use rmcp::model::{AnnotateAble, RawTextContent};
+
+        MessageContent::Text(
+            RawTextContent {
+                text: text.to_string(),
+                meta: None,
+            }
+            .no_annotation()
+            .with_audience(vec![Role::Assistant]),
+        )
+    }
+
     #[test]
     fn test_message_snippet_collapses_whitespace_and_truncates() {
         use rmcp::model::CallToolRequestParams;
@@ -3314,6 +3333,23 @@ mod tests {
         assert_eq!(message_snippet(&agent_only, 20), None);
     }
 
+    #[test]
+    fn test_message_snippet_ignores_assistant_audience_text_blocks() {
+        let mixed = Message::user()
+            .with_content(assistant_audience_text("assistant-only preprompt"))
+            .with_text("visible prompt");
+
+        assert_eq!(
+            message_snippet(&mixed, 128).as_deref(),
+            Some("visible prompt")
+        );
+
+        let only_assistant =
+            Message::user().with_content(assistant_audience_text("assistant-only details"));
+
+        assert_eq!(message_snippet(&only_assistant, 128), None);
+    }
+
     #[tokio::test]
     async fn test_last_message_snippet_set_on_text_append() {
         let temp_dir = TempDir::new().unwrap();
@@ -3329,6 +3365,23 @@ mod tests {
         assert_eq!(
             snippet_of(&sm, &id).await.as_deref(),
             Some("hello there world")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_last_message_snippet_filters_audience_on_append() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+        let id = snippet_session(&sm).await;
+
+        let message = Message::user()
+            .with_content(assistant_audience_text("assistant-only preprompt"))
+            .with_text("visible prompt");
+        sm.add_message(&id, &message).await.unwrap();
+
+        assert_eq!(
+            snippet_of(&sm, &id).await.as_deref(),
+            Some("visible prompt")
         );
     }
 
