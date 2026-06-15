@@ -27,7 +27,9 @@ use std::collections::HashMap;
 
 use crate::providers::base::MessageStream;
 use goose_providers::model::ModelConfig;
+use reqwest::StatusCode;
 use rmcp::model::Tool;
+use std::collections::HashMap;
 
 pub(crate) const OPEN_AI_PROVIDER_NAME: &str = "openai";
 pub(crate) const OPEN_AI_DEFAULT_BASE_PATH: &str = "v1/chat/completions";

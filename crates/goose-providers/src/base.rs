@@ -411,6 +411,95 @@ pub trait Provider: Send + Sync {
     }
 }
 
+/// Configuration key metadata for provider setup
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ConfigKey {
+    /// The name of the configuration key (e.g., "API_KEY")
+    pub name: String,
+    /// Whether this key is required for the provider to function
+    pub required: bool,
+    /// Whether this key should be stored securely (e.g., in keychain)
+    pub secret: bool,
+    /// Optional default value for the key
+    pub default: Option<String>,
+    /// Whether this key should be configured using an OAuth flow
+    /// When true, the provider's configure_oauth() method will be called instead of prompting for manual input
+    pub oauth_flow: bool,
+    /// Whether this OAuth flow uses the device code grant (RFC 8628)
+    /// When true, the user must enter a verification code in the browser
+    #[serde(default)]
+    pub device_code_flow: bool,
+    /// Whether this key should be shown prominently during provider setup
+    /// (onboarding, settings modal, CLI configure)
+    #[serde(default)]
+    pub primary: bool,
+}
+
+impl ConfigKey {
+    /// Create a new ConfigKey
+    pub fn new(
+        name: &str,
+        required: bool,
+        secret: bool,
+        default: Option<&str>,
+        primary: bool,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            required,
+            secret,
+            default: default.map(|s| s.to_string()),
+            oauth_flow: false,
+            device_code_flow: false,
+            primary,
+        }
+    }
+
+    /// Create a new ConfigKey that uses an OAuth flow for configuration
+    ///
+    /// This is used for providers that support OAuth authentication instead of manual API key entry.
+    /// When oauth_flow is true, the configuration system will call the provider's configure_oauth() method.
+    pub fn new_oauth(
+        name: &str,
+        required: bool,
+        secret: bool,
+        default: Option<&str>,
+        primary: bool,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            required,
+            secret,
+            default: default.map(|s| s.to_string()),
+            oauth_flow: true,
+            device_code_flow: false,
+            primary,
+        }
+    }
+
+    /// Create a new ConfigKey that uses OAuth device code flow (RFC 8628) for configuration
+    ///
+    /// Similar to new_oauth, but indicates the provider uses the device code grant where the user
+    /// must enter a verification code in the browser.
+    pub fn new_oauth_device_code(
+        name: &str,
+        required: bool,
+        secret: bool,
+        default: Option<&str>,
+        primary: bool,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            required,
+            secret,
+            default: default.map(|s| s.to_string()),
+            oauth_flow: true,
+            device_code_flow: true,
+            primary,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

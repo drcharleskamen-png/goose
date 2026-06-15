@@ -18,11 +18,11 @@ use tokio::process::Command;
 use tokio::sync::oneshot;
 
 use super::base::{
-    stream_from_single_message, ConfigKey, MessageStream, PermissionRouting, Provider, ProviderDef,
+    stream_from_single_message, MessageStream, PermissionRouting, Provider, ProviderDef,
     ProviderMetadata,
 };
 use super::utils::filter_extensions_from_system_prompt;
-use crate::config::base::ClaudeCodeCommand;
+use crate::config::base::{provider_config_key_from_value, ClaudeCodeCommand};
 use crate::config::paths::Paths;
 use crate::config::search_path::SearchPaths;
 use crate::config::{Config, ExtensionConfig, GooseMode};
@@ -595,7 +595,7 @@ impl ProviderDef for ClaudeCodeProvider {
             // Only a few agentic choices; fetched dynamically via fetch_supported_models.
             vec![],
             CLAUDE_CODE_DOC_URL,
-            vec![ConfigKey::from_value_type::<ClaudeCodeCommand>(
+            vec![provider_config_key_from_value::<ClaudeCodeCommand>(
                 true, false, true,
             )],
         )
