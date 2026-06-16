@@ -1,4 +1,5 @@
 mod agent;
+pub mod auto_recall;
 pub mod container;
 pub mod execute_commands;
 pub mod extension;
@@ -20,6 +21,7 @@ pub(crate) mod subagent_task_config;
 mod tool_confirmation_router;
 mod tool_execution;
 pub mod types;
+pub mod user_profile;
 pub mod validate_extensions;
 
 pub use agent::{Agent, AgentConfig, AgentEvent, ExtensionLoadResult, GoosePlatform};

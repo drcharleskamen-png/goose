@@ -24,6 +24,12 @@ use goose_providers::conversation::token_usage::ProviderUsage;
 use rmcp::model::Tool;
 use tracing::warn;
 
+fn user_profile_enabled() -> bool {
+    crate::config::Config::global()
+        .get_param::<bool>("GOOSE_USER_PROFILE_ENABLED")
+        .unwrap_or(false)
+}
+
 async fn enhance_model_error(error: ProviderError, provider: &Arc<dyn Provider>) -> ProviderError {
     let ProviderError::RequestFailed(ref msg) = error else {
         return error;
@@ -230,6 +236,15 @@ impl Agent {
             .with_hints(working_dir)
             .with_goose_mode(goose_mode)
             .build();
+
+        if user_profile_enabled() {
+            if let Some(profile) = crate::agents::user_profile::load_profile() {
+                system_prompt = format!(
+                    "{system_prompt}\n\n{}",
+                    crate::agents::user_profile::system_prompt_section(&profile)
+                );
+            }
+        }
 
         // Handle toolshim if enabled
         let mut toolshim_tools = vec![];

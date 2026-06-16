@@ -1135,6 +1135,8 @@ config_value!(GOOSE_PROMPT_EDITOR, Option<String>);
 config_value!(GOOSE_PROMPT_EDITOR_ALWAYS, Option<bool>);
 config_value!(GOOSE_MAX_ACTIVE_AGENTS, usize);
 config_value!(GOOSE_DISABLE_SESSION_NAMING, bool);
+config_value!(GOOSE_USER_PROFILE_ENABLED, bool);
+config_value!(GOOSE_CHAT_RECALL_AUTO, bool);
 config_value!(GOOSE_DISABLE_TOOL_CALL_SUMMARY, bool);
 config_value!(GOOSE_THINKING_EFFORT, String);
 config_value!(GOOSE_DEFAULT_EXTENSION_TIMEOUT, u64);

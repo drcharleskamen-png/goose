@@ -2177,9 +2177,158 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(results.results.len(), 1);
+        // `limit` now bounds the number of returned sessions, not raw messages,
+        // so both matching sessions come back. The session with more keyword
+        // hits ranks first.
+        assert_eq!(results.results.len(), 2);
         assert_eq!(results.results[0].session_id, newer_noise);
-        assert_eq!(results.results[0].messages.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_search_ranks_relevant_session_above_recent_noise() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+
+        // Older session that is genuinely about the topic.
+        let relevant = create_search_session(
+            &sm,
+            "Tyre pressures",
+            SessionType::User,
+            "2026-05-01T00:00:00Z",
+            &[(
+                "cold tyre pressure for the boxster track day is 27 front 29 rear",
+                "2026-05-01T00:00:00Z",
+            )],
+        )
+        .await;
+
+        // Newer session that merely mentions the keyword once in passing.
+        let _recent_noise = create_search_session(
+            &sm,
+            "Refactor work",
+            SessionType::User,
+            "2026-06-15T00:00:00Z",
+            &[(
+                "while testing I typed the word tyre into a search box",
+                "2026-06-15T00:00:00Z",
+            )],
+        )
+        .await;
+
+        let results = sm
+            .search_chat_history(
+                "cold tyre pressure boxster",
+                Some(5),
+                None,
+                None,
+                None,
+                vec![SessionType::User],
+            )
+            .await
+            .unwrap();
+
+        assert!(!results.results.is_empty());
+        // Despite being older, the on-topic session ranks first by coverage.
+        assert_eq!(results.results[0].session_id, relevant);
+        // The leading message is the best-matching one (used as the snippet).
+        assert!(results.results[0].messages[0]
+            .content
+            .contains("cold tyre pressure"));
+    }
+
+    #[tokio::test]
+    async fn test_search_deprioritizes_compaction_summaries() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+
+        // A session that genuinely discusses the goal command turn behavior.
+        let real = create_search_session(
+            &sm,
+            "Goal command fix",
+            SessionType::User,
+            "2026-05-01T00:00:00Z",
+            &[(
+                "the goal command never started a turn so we made it start a turn",
+                "2026-05-01T00:00:00Z",
+            )],
+        )
+        .await;
+
+        // A newer session whose only match is inside a compaction summary recap.
+        let _recap = create_search_session(
+            &sm,
+            "Unrelated diffusion work",
+            SessionType::User,
+            "2026-06-15T00:00:00Z",
+            &[(
+                "<analysis> Reviewing the conversation chronologically: the user \
+                 worked on a goal command turn behavior and many other things </analysis>",
+                "2026-06-15T00:00:00Z",
+            )],
+        )
+        .await;
+
+        let results = sm
+            .search_chat_history(
+                "goal command turn",
+                Some(5),
+                None,
+                None,
+                None,
+                vec![SessionType::User],
+            )
+            .await
+            .unwrap();
+
+        assert!(!results.results.is_empty());
+        // The real discussion outranks the keyword-dense compaction recap.
+        assert_eq!(results.results[0].session_id, real);
+    }
+
+    #[tokio::test]
+    async fn test_search_stopwords_do_not_dominate_ranking() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+
+        let on_topic = create_search_session(
+            &sm,
+            "Postgres indexing",
+            SessionType::User,
+            "2026-05-01T00:00:00Z",
+            &[(
+                "what is the best way to add a postgres index for this query",
+                "2026-05-01T00:00:00Z",
+            )],
+        )
+        .await;
+
+        // A session full of stopwords but nothing on-topic should not match.
+        let _filler = create_search_session(
+            &sm,
+            "Chit chat",
+            SessionType::User,
+            "2026-06-15T00:00:00Z",
+            &[(
+                "what is the the the and you should know how to do this",
+                "2026-06-15T00:00:00Z",
+            )],
+        )
+        .await;
+
+        let results = sm
+            .search_chat_history(
+                "what is the best postgres index",
+                Some(5),
+                None,
+                None,
+                None,
+                vec![SessionType::User],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].session_id, on_topic);
     }
 
     async fn expected_session_list_ids(sm: &SessionManager, session_ids: &[String]) -> Vec<String> {

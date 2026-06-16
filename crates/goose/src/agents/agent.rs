@@ -1497,6 +1497,8 @@ impl Agent {
             .execute_command(&message_text, &session_config.id)
             .await;
 
+        let mut was_plain_user_turn = false;
+
         match command_result {
             Err(e) => {
                 let error_message = Message::assistant()
@@ -1559,8 +1561,51 @@ impl Agent {
                 session_manager
                     .add_message(&session_config.id, &user_message)
                     .await?;
+                was_plain_user_turn = true;
             }
         }
+
+        let mut recall_preamble: Vec<AgentEvent> = Vec::new();
+        if was_plain_user_turn
+            && Config::global()
+                .get_param::<bool>("GOOSE_CHAT_RECALL_AUTO")
+                .unwrap_or(false)
+        {
+            if let Ok(provider) = self.provider().await {
+                let current_session_type = session_manager
+                    .get_session(&session_config.id, false)
+                    .await
+                    .ok()
+                    .map(|s| s.session_type);
+                if let Some(outcome) = crate::agents::auto_recall::recall_for_message(
+                    &session_manager,
+                    &provider,
+                    &session_config.id,
+                    current_session_type,
+                    &message_text,
+                )
+                .await
+                {
+                    session_manager
+                        .add_message(
+                            &session_config.id,
+                            &Message::user()
+                                .with_text(outcome.context_block)
+                                .with_visibility(false, true),
+                        )
+                        .await?;
+                    recall_preamble.push(AgentEvent::Message(
+                        Message::assistant()
+                            .with_system_notification(
+                                SystemNotificationType::InlineMessage,
+                                outcome.user_summary,
+                            )
+                            .with_visibility(true, false),
+                    ));
+                }
+            }
+        }
+
         let session = session_manager
             .get_session(&session_config.id, true)
             .await?;
@@ -1580,6 +1625,10 @@ impl Agent {
         let conversation_to_compact = conversation.clone();
 
         Ok(Box::pin(async_stream::try_stream! {
+            for event in recall_preamble {
+                yield event;
+            }
+
             let final_conversation = if !needs_auto_compact {
                 conversation
             } else {
@@ -1708,6 +1757,21 @@ impl Agent {
                     }
                     Ok(None) => {}
                     Err(e) => warn!("Failed to generate session description: {}", e),
+                }
+            });
+        }
+
+        if Config::global()
+            .get_param::<bool>("GOOSE_USER_PROFILE_ENABLED")
+            .unwrap_or(false)
+        {
+            let provider = provider.clone();
+            let manager_for_spawn = session_manager.clone();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    crate::agents::user_profile::maybe_refresh(&manager_for_spawn, provider).await
+                {
+                    warn!("Failed to refresh user profile: {}", e);
                 }
             });
         }

@@ -6,6 +6,20 @@ use serde::Serialize;
 use sqlx::{Pool, Sqlite};
 use std::collections::HashMap;
 
+/// Upper bound on matching messages fetched from SQLite before ranking in Rust.
+/// Decoupled from the caller's `limit`, which bounds returned sessions.
+const CANDIDATE_POOL_SIZE: i64 = 500;
+
+/// Common words filtered from queries so they don't match nearly everything.
+const STOPWORDS: &[&str] = &[
+    "the", "and", "for", "are", "was", "were", "what", "when", "where", "which", "who", "whom",
+    "how", "why", "did", "does", "done", "you", "your", "yours", "our", "ours", "this", "that",
+    "these", "those", "with", "from", "have", "has", "had", "can", "could", "should", "would",
+    "will", "shall", "about", "into", "out", "off", "over", "under", "than", "then", "them",
+    "they", "their", "there", "here", "some", "any", "all", "not", "but", "use", "used", "using",
+    "get", "got", "set", "let", "remind", "remember", "recall", "tell", "show", "find",
+];
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ChatRecallResult {
     pub session_id: String,
@@ -99,7 +113,7 @@ impl<'a> ChatHistorySearch<'a> {
         let mut query_builder = sqlx::query_as::<_, SqlQueryRow>(&sql);
 
         for keyword in keywords {
-            query_builder = query_builder.bind(keyword);
+            query_builder = query_builder.bind(format!("%{keyword}%"));
         }
 
         if let Some(exclude_id) = &self.exclude_session_id {
@@ -117,16 +131,40 @@ impl<'a> ChatHistorySearch<'a> {
             query_builder = query_builder.bind(before);
         }
 
-        query_builder = query_builder.bind(self.limit as i64);
+        // Fetch a generous candidate pool of matching messages, then rank in Rust.
+        // `limit` bounds the number of returned sessions, not raw rows.
+        query_builder = query_builder.bind(CANDIDATE_POOL_SIZE);
 
         Ok(query_builder.fetch_all(self.pool).await?)
     }
 
     fn parse_keywords(&self) -> Vec<String> {
-        self.query
+        let cleaned: Vec<String> = self
+            .query
             .split_whitespace()
-            .map(|word| format!("%{}%", word.to_lowercase()))
-            .collect()
+            .map(|word| {
+                word.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_string()
+            })
+            .filter(|word| !word.is_empty())
+            .collect();
+
+        let mut keywords: Vec<String> = cleaned
+            .iter()
+            .filter(|word| word.len() >= 3 && !STOPWORDS.contains(&word.as_str()))
+            .cloned()
+            .collect();
+
+        // If filtering removed everything (e.g. a very short query), fall back to
+        // the cleaned words so we still search rather than return nothing.
+        if keywords.is_empty() {
+            keywords = cleaned;
+        }
+
+        keywords.sort();
+        keywords.dedup();
+        keywords
     }
 
     fn build_sql(&self, keywords: &[String]) -> String {
@@ -259,11 +297,15 @@ impl<'a> ChatHistorySearch<'a> {
         session_messages: HashMap<String, SessionMessageGroup>,
         session_totals: HashMap<String, usize>,
     ) -> ChatRecallResults {
-        let mut results: Vec<ChatRecallResult> = session_messages
+        let keywords = self.parse_keywords();
+
+        let mut scored: Vec<(SessionScore, ChatRecallResult)> = session_messages
             .into_iter()
             .map(
                 |(session_id, (description, working_dir, _created_at, messages))| {
-                    let message_vec: Vec<ChatRecallMessage> = messages
+                    // Rank messages within the session by how well each matches,
+                    // so the most relevant message leads (and becomes the snippet).
+                    let mut message_vec: Vec<ChatRecallMessage> = messages
                         .into_iter()
                         .map(|(role, content, timestamp)| ChatRecallMessage {
                             role,
@@ -271,6 +313,12 @@ impl<'a> ChatHistorySearch<'a> {
                             timestamp,
                         })
                         .collect();
+
+                    message_vec.sort_by(|a, b| {
+                        message_relevance(&b.content, &keywords)
+                            .cmp(&message_relevance(&a.content, &keywords))
+                            .then_with(|| b.timestamp.cmp(&a.timestamp))
+                    });
 
                     let last_activity = message_vec
                         .iter()
@@ -281,24 +329,123 @@ impl<'a> ChatHistorySearch<'a> {
                     let total_messages_in_session =
                         session_totals.get(&session_id).copied().unwrap_or(0);
 
-                    ChatRecallResult {
+                    let score = SessionScore::compute(&message_vec, &description, &keywords);
+
+                    let result = ChatRecallResult {
                         session_id,
                         session_description: description,
                         session_working_dir: working_dir,
                         last_activity,
                         total_messages_in_session,
                         messages: message_vec,
-                    }
+                    };
+                    (score, result)
                 },
             )
             .collect();
 
-        results.sort_by(|a, b| b.last_activity.cmp(&a.last_activity));
+        // Rank sessions: keyword coverage first, then total matches, then recency.
+        scored.sort_by(|a, b| {
+            b.0.coverage
+                .cmp(&a.0.coverage)
+                .then_with(|| b.0.total_hits.cmp(&a.0.total_hits))
+                .then_with(|| b.1.last_activity.cmp(&a.1.last_activity))
+        });
+
+        let mut results: Vec<ChatRecallResult> = scored
+            .into_iter()
+            .take(self.limit)
+            .map(|(_, result)| result)
+            .collect();
+
+        // Trim each session's message list to the most relevant few so the
+        // snippet/leading messages are useful rather than the whole transcript.
+        for result in &mut results {
+            result.messages.truncate(MAX_MESSAGES_PER_SESSION);
+        }
 
         let total_matches = results.iter().map(|r| r.messages.len()).sum();
         ChatRecallResults {
             results,
             total_matches,
+        }
+    }
+}
+
+const MAX_MESSAGES_PER_SESSION: usize = 3;
+
+/// Markers identifying compaction/continuation summaries. These messages recap a
+/// whole session, so they are keyword-dense and match almost any query — they
+/// should not outrank a message that actually discusses the topic.
+const SUMMARY_MARKERS: &[&str] = &[
+    "<analysis>",
+    "your context was compacted",
+    "the previous message contains a summary of the conversation",
+];
+
+fn is_summary_message(content: &str) -> bool {
+    let lower = content.to_lowercase();
+    SUMMARY_MARKERS.iter().any(|m| lower.contains(m))
+}
+
+/// Relevance of a single message: distinct keywords matched (weighted heavily)
+/// plus total keyword occurrences. Compaction summaries are penalized so a
+/// message genuinely about the topic wins over a session recap.
+fn message_relevance(content: &str, keywords: &[String]) -> usize {
+    let lower = content.to_lowercase();
+    let distinct = keywords.iter().filter(|k| lower.contains(*k)).count();
+    let occurrences: usize = keywords.iter().map(|k| lower.matches(k).count()).sum();
+    let score = distinct * 10 + occurrences;
+    if is_summary_message(content) {
+        score / 4
+    } else {
+        score
+    }
+}
+
+struct SessionScore {
+    /// Number of distinct query keywords found anywhere in the session.
+    coverage: usize,
+    /// Total keyword occurrences across the session's matched messages.
+    total_hits: usize,
+}
+
+impl SessionScore {
+    fn compute(messages: &[ChatRecallMessage], description: &str, keywords: &[String]) -> Self {
+        // Coverage and hits are computed over non-summary messages so a session
+        // that only matches inside a compaction recap doesn't rank as on-topic.
+        let mut haystack = description.to_lowercase();
+        for m in messages {
+            if is_summary_message(&m.content) {
+                continue;
+            }
+            haystack.push(' ');
+            haystack.push_str(&m.content.to_lowercase());
+        }
+
+        let mut coverage = keywords.iter().filter(|k| haystack.contains(*k)).count();
+        let mut total_hits = keywords.iter().map(|k| haystack.matches(k).count()).sum();
+
+        // Fall back to summary content if that's all a session has, but at a
+        // discount so genuine matches elsewhere win.
+        if coverage == 0 {
+            let summary: String = messages
+                .iter()
+                .filter(|m| is_summary_message(&m.content))
+                .map(|m| m.content.to_lowercase())
+                .collect::<Vec<_>>()
+                .join(" ");
+            coverage = keywords.iter().filter(|k| summary.contains(*k)).count();
+            total_hits = keywords
+                .iter()
+                .map(|k| summary.matches(k).count())
+                .sum::<usize>()
+                / 4;
+        }
+
+        Self {
+            coverage,
+            total_hits,
         }
     }
 }
