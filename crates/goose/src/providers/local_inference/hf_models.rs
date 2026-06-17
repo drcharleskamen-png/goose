@@ -375,11 +375,6 @@ fn build_download_url(repo_id: &str, filename: &str) -> String {
     format!("{}/{}/resolve/main/{}", HF_DOWNLOAD_BASE, repo_id, filename)
 }
 
-/// Whether a remote-supplied filename is a safe relative path to join onto a
-/// local download directory. Rejects absolute paths, Windows drive prefixes,
-/// and any `..` traversal component. The HuggingFace API mirrors git tree
-/// paths (which cannot contain these), but we never trust the value as a path
-/// without checking it ourselves.
 fn is_safe_relative_path(filename: &str) -> bool {
     use std::path::{Component, Path};
 
