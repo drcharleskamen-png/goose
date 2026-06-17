@@ -273,8 +273,7 @@ impl OpenAiProvider {
             parsed.host,
             auth,
             std::time::Duration::from_secs(timeout_secs),
-        )
-        .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        )?;
 
         if !parsed.query_params.is_empty() {
             api_client = api_client.with_query(parsed.query_params);
@@ -824,8 +823,7 @@ impl Provider for OpenAiProvider {
             let mut payload = create_responses_request(model_config, system, messages, tools)?;
             payload["stream"] = serde_json::Value::Bool(self.supports_streaming);
 
-            let mut log = start_log(model_config, &payload)
-                .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+            let mut log = start_log(model_config, &payload)?;
 
             let response = self
                 .with_retry(|| async {
@@ -871,8 +869,7 @@ impl Provider for OpenAiProvider {
                 log.write(
                     &serde_json::to_value(&message).unwrap_or_default(),
                     Some(&usage_data),
-                )
-                .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+                )?;
 
                 Ok(super::base::stream_from_single_message(message, usage))
             }
@@ -887,11 +884,9 @@ impl Provider for OpenAiProvider {
                 OpenAiFormatOptions {
                     preserve_thinking_context: self.preserve_thinking_context,
                 },
-            )
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+            )?;
             let payload = self.sanitize_request_for_compat(payload);
-            let mut log = start_log(model_config, &payload)
-                .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+            let mut log = start_log(model_config, &payload)?;
 
             let response = self
                 .with_retry(|| async {
@@ -923,8 +918,7 @@ impl Provider for OpenAiProvider {
                 log.write(
                     &serde_json::to_value(&message).unwrap_or_default(),
                     Some(&usage_data),
-                )
-                .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+                )?;
 
                 Ok(super::base::stream_from_single_message(message, usage))
             }

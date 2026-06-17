@@ -231,8 +231,7 @@ impl DatabricksV2Provider {
         let mut payload =
             openai_responses::create_responses_request(model_config, system, messages, tools)?;
         payload["stream"] = Value::Bool(true);
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
 
         let response = self
             .with_retry(|| async {
@@ -269,8 +268,7 @@ impl DatabricksV2Provider {
         if payload.get("max_tokens").is_none() {
             payload["max_tokens"] = Value::from(model_config.max_output_tokens());
         }
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
 
         let response = self
             .with_retry(|| async {
@@ -302,8 +300,7 @@ impl DatabricksV2Provider {
     ) -> Result<MessageStream, ProviderError> {
         let mut payload = anthropic::create_request(model_config, system, messages, tools)?;
         payload["stream"] = Value::Bool(true);
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
 
         let response = self
             .with_retry(|| async {
@@ -334,7 +331,7 @@ impl DatabricksV2Provider {
             while let Some(message) = futures::StreamExt::next(&mut message_stream).await {
                 let (message, usage) = message.map_err(ProviderError::from_stream_error)?;
                 log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
-                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+                    ?;
                 yield (message, usage);
             }
         }))

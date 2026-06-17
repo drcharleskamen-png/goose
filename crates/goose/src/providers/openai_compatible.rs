@@ -128,8 +128,7 @@ impl Provider for OpenAiCompatibleProvider {
             tools,
             self.supports_streaming,
         )?;
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
 
         let completions_path = format!("{}chat/completions", self.completions_prefix);
         let response = self
@@ -162,8 +161,7 @@ impl Provider for OpenAiCompatibleProvider {
             log.write(
                 &serde_json::to_value(&message).unwrap_or_default(),
                 Some(&usage.usage),
-            )
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+            )?;
 
             Ok(stream_from_single_message(message, usage))
         }
@@ -198,7 +196,7 @@ pub fn stream_openai_compat(
                     .unwrap_or_else(ProviderError::stream_decode_error)
             )?;
             log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
-                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+                    ?;
             yield (message, usage);
         }
     }))
@@ -223,7 +221,7 @@ pub fn stream_responses_compat(
                     .unwrap_or_else(ProviderError::stream_decode_error)
             )?;
             log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
-                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+                    ?;
             yield (message, usage);
         }
     }))

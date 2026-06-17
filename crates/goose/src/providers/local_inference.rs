@@ -605,7 +605,7 @@ impl Provider for LocalInferenceProvider {
                     backend_for_load.load_model(&model_id, &resolved_for_load, &settings_for_load)
                 })
                 .await
-                .map_err(|e| anyhow::anyhow!("failed to log: {}", e))??;
+                .map_err(|e| ProviderError::ExecutionError(e.to_string()))??;
                 *model_lock = Some(loaded);
             }
         }
@@ -651,8 +651,7 @@ impl Provider for LocalInferenceProvider {
             },
         });
 
-        let mut log = start_log(&self.model_config, &log_payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(&self.model_config, &log_payload)?;
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<
             Result<(Option<Message>, Option<ProviderUsage>), ProviderError>,

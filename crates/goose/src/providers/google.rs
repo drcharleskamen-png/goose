@@ -192,8 +192,7 @@ impl Provider for GoogleProvider {
         tools: &[Tool],
     ) -> Result<MessageStream, ProviderError> {
         let payload = create_request(model_config, system, messages, tools)?;
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
 
         let response = self
             .with_retry(|| async {
@@ -221,7 +220,7 @@ impl Provider for GoogleProvider {
                 })?;
                 if message.is_some() || usage.is_some() {
                     log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
-                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+                    ?;
                 }
                 yield (message, usage);
             }

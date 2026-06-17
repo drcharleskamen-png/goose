@@ -432,7 +432,7 @@ impl Provider for KimiCodeProvider {
             while let Some(message) = futures::StreamExt::next(&mut message_stream).await {
                 let (message, usage) = message.map_err(ProviderError::from_stream_error)?;
                 log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
-                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+                    ?;
                 yield (message, usage);
             }
         }))

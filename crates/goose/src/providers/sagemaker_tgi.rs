@@ -350,13 +350,11 @@ impl Provider for SageMakerTgiProvider {
             "messages": messages,
             "tools": tools
         });
-        let mut log = start_log(&self.model, &debug_payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(&self.model, &debug_payload)?;
         log.write(
             &serde_json::to_value(&message).unwrap_or_default(),
             Some(&usage),
-        )
-        .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        )?;
 
         let provider_usage = ProviderUsage::new(model_name.to_string(), usage);
         Ok(super::base::stream_from_single_message(

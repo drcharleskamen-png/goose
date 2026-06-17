@@ -250,10 +250,8 @@ impl Provider for LiteLLMProvider {
         let message = goose_providers::formats::openai::response_to_message(&response)?;
         let usage = goose_providers::formats::openai::get_usage(&response);
         let response_model = get_model(&response);
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
-        log.write(&response, Some(&usage))
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
+        log.write(&response, Some(&usage))?;
         let provider_usage = ProviderUsage::new(response_model, usage);
         Ok(super::base::stream_from_single_message(
             message,

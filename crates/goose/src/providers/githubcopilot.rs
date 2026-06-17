@@ -404,8 +404,7 @@ impl GithubCopilotProvider {
             .map_err(|e| ProviderError::RequestFailed(e.to_string()))?;
         payload["stream"] = serde_json::Value::Bool(true);
 
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
 
         let response = self
             .with_retry(|| async {
@@ -453,8 +452,7 @@ impl GithubCopilotProvider {
                 &ImageFormat::OpenAi,
                 true,
             )?;
-            let mut log = start_log(model_config, &payload)
-                .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+            let mut log = start_log(model_config, &payload)?;
 
             let response = self
                 .with_retry(|| async {
@@ -490,8 +488,7 @@ impl GithubCopilotProvider {
                 &ImageFormat::OpenAi,
                 false,
             )?;
-            let mut log = start_log(model_config, &payload)
-                .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+            let mut log = start_log(model_config, &payload)?;
 
             let response = self
                 .with_retry(|| async {
@@ -516,8 +513,7 @@ impl GithubCopilotProvider {
                 Usage::default()
             });
             let response_model = get_model(&response);
-            log.write(&response, Some(&usage))
-                .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+            log.write(&response, Some(&usage))?;
 
             Ok(super::base::stream_from_single_message(
                 message,

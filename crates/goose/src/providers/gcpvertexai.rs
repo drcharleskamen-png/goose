@@ -618,8 +618,7 @@ impl Provider for GcpVertexAIProvider {
             }
         }
 
-        let mut log = start_log(model_config, &request)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &request)?;
 
         let response = self
             .post_stream(Some(session_id), &request, &context)
@@ -644,7 +643,7 @@ impl Provider for GcpVertexAIProvider {
             while let Some(message) = message_stream.next().await {
                 let (message, usage) = message.map_err(ProviderError::from_stream_error)?;
                 log.write(&message, usage.as_ref().map(|u| &u.usage))
-                        .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+                        ?;
                 yield (message, usage);
             }
         }))

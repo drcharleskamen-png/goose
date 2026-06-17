@@ -184,8 +184,7 @@ impl Provider for NanoGptProvider {
             true,
         )?;
 
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
 
         let response = self
             .with_retry(|| async {

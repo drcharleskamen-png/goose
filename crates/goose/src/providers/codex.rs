@@ -718,8 +718,7 @@ impl Provider for CodexProvider {
             "messages_count": messages.len()
         });
 
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
 
         let response = json!({
             "lines": lines.len(),

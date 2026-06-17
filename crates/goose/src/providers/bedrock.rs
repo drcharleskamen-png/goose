@@ -526,8 +526,7 @@ impl BedrockProvider {
             "messages": messages,
             "tools": tools
         });
-        let mut log = start_log(&self.model, &debug_payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(&self.model, &debug_payload)?;
         log.write(
             &serde_json::to_value(&message).unwrap_or_default(),
             Some(&usage),

@@ -353,10 +353,8 @@ impl Provider for CursorAgentProvider {
             "usage": usage
         });
 
-        let mut log = start_log(&self.model, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
-        log.write(&response, Some(&usage))
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(&self.model, &payload)?;
+        log.write(&response, Some(&usage))?;
 
         let provider_usage = ProviderUsage::new(model_config.model_name.clone(), usage);
         Ok(stream_from_single_message(message, provider_usage))

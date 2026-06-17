@@ -330,8 +330,7 @@ impl Provider for AnthropicProvider {
             .insert("stream".to_string(), Value::Bool(true));
 
         let conditional_headers = self.get_conditional_headers();
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
 
         let response = self
             .with_retry(|| async {
@@ -357,8 +356,7 @@ impl Provider for AnthropicProvider {
             pin!(message_stream);
             while let Some(message) = futures::StreamExt::next(&mut message_stream).await {
                 let (message, usage) = message.map_err(ProviderError::from_stream_error)?;
-                log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
-                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+                log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())?;
                 yield (message, usage);
             }
         }))

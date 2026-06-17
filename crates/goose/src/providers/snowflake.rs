@@ -357,8 +357,7 @@ impl Provider for SnowflakeProvider {
         };
         let payload = create_request(model_config, system, messages, tools)?;
 
-        let mut log = start_log(&self.model, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(&self.model, &payload)?;
 
         let response = self
             .with_retry(|| async {
@@ -371,8 +370,7 @@ impl Provider for SnowflakeProvider {
         let usage = get_usage(&response)?;
         let response_model = get_model(&response);
 
-        log.write(&response, Some(&usage))
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        log.write(&response, Some(&usage))?;
 
         let provider_usage = ProviderUsage::new(response_model, usage);
         Ok(super::base::stream_from_single_message(

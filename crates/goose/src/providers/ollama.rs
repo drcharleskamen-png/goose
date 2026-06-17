@@ -307,8 +307,7 @@ impl Provider for OllamaProvider {
             true,
         )?;
         apply_ollama_options(&mut payload, model_config);
-        let mut log = start_log(model_config, &payload)
-            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        let mut log = start_log(model_config, &payload)?;
 
         let response = self
             .with_retry(|| async {
@@ -451,7 +450,7 @@ fn stream_ollama(
         while let Some(message) = message_stream.next().await {
             let (message, usage) = message.map_err(ProviderError::from_stream_error)?;
             log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
-                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+                    ?;
             yield (message, usage);
         }
     }))
