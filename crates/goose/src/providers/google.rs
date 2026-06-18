@@ -2,7 +2,6 @@ use super::api_client::{ApiClient, AuthMethod};
 use super::base::MessageStream;
 use super::openai_compatible::{handle_status, map_http_error_to_provider_error, sanitize_url};
 use super::retry::ProviderRetry;
-use super::utils::RequestLog;
 use crate::conversation::message::Message;
 use goose_providers::errors::ProviderError;
 
@@ -14,6 +13,7 @@ use async_trait::async_trait;
 use futures::future::BoxFuture;
 use futures::TryStreamExt;
 use goose_providers::model::ModelConfig;
+use goose_providers::request_log::{start_log, LoggerHandleExt};
 use rmcp::model::Tool;
 use serde_json::Value;
 use std::io;
@@ -192,7 +192,8 @@ impl Provider for GoogleProvider {
         tools: &[Tool],
     ) -> Result<MessageStream, ProviderError> {
         let payload = create_request(model_config, system, messages, tools)?;
-        let mut log = RequestLog::start(model_config, &payload)?;
+        let mut log = start_log(model_config, &payload)
+            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
 
         let response = self
             .with_retry(|| async {
@@ -219,7 +220,8 @@ impl Provider for GoogleProvider {
                         .unwrap_or_else(ProviderError::stream_decode_error)
                 })?;
                 if message.is_some() || usage.is_some() {
-                    log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())?;
+                    log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
+                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
                 }
                 yield (message, usage);
             }

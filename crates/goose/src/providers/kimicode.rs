@@ -26,11 +26,11 @@ use super::oauth_device_flow::{
 };
 use super::openai_compatible::handle_status;
 use super::retry::ProviderRetry;
-use super::utils::RequestLog;
 use crate::conversation::message::Message;
 use futures::future::BoxFuture;
 use goose_providers::errors::ProviderError;
 use goose_providers::model::ModelConfig;
+use goose_providers::request_log::{start_log, LoggerHandleExt};
 use rmcp::model::Tool;
 
 const KIMI_CODE_PROVIDER_NAME: &str = "kimi_code";
@@ -404,7 +404,7 @@ impl Provider for KimiCodeProvider {
             .unwrap()
             .insert("stream".to_string(), Value::Bool(true));
 
-        let mut log = RequestLog::start(model_config, &payload)
+        let mut log = start_log(model_config, &payload)
             .map_err(|e| ProviderError::RequestFailed(e.to_string()))?;
 
         let response = self
@@ -431,7 +431,8 @@ impl Provider for KimiCodeProvider {
             pin!(message_stream);
             while let Some(message) = futures::StreamExt::next(&mut message_stream).await {
                 let (message, usage) = message.map_err(ProviderError::from_stream_error)?;
-                log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())?;
+                log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
+                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
                 yield (message, usage);
             }
         }))

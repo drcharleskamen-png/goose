@@ -10,8 +10,7 @@ use tokio::process::Command;
 use super::base::{
     stream_from_single_message, ConfigKey, MessageStream, Provider, ProviderDef, ProviderMetadata,
 };
-use super::utils::{filter_extensions_from_system_prompt, RequestLog};
-use crate::config::base::CursorAgentCommand;
+use super::utils::filter_extensions_from_system_prompt;
 use crate::config::search_path::SearchPaths;
 use crate::conversation::message::{Message, MessageContent};
 use crate::subprocess::configure_subprocess;
@@ -19,6 +18,7 @@ use futures::future::BoxFuture;
 use goose_providers::conversation::token_usage::{ProviderUsage, Usage};
 use goose_providers::errors::ProviderError;
 use goose_providers::model::ModelConfig;
+use goose_providers::request_log::{start_log, LoggerHandleExt};
 use rmcp::model::Tool;
 
 const CURSOR_AGENT_PROVIDER_NAME: &str = "cursor-agent";
@@ -287,8 +287,12 @@ impl ProviderDef for CursorAgentProvider {
             CURSOR_AGENT_DEFAULT_MODEL,
             CURSOR_AGENT_KNOWN_MODELS.to_vec(),
             CURSOR_AGENT_DOC_URL,
-            vec![ConfigKey::from_value_type::<CursorAgentCommand>(
-                true, false, true,
+            vec![ConfigKey::new(
+                "CURSOR_AGENT_COMMAND",
+                true,
+                false,
+                Some("cursor-agent"),
+                true,
             )],
         )
     }
@@ -352,8 +356,10 @@ impl Provider for CursorAgentProvider {
             "usage": usage
         });
 
-        let mut log = RequestLog::start(&self.model, &payload)?;
-        log.write(&response, Some(&usage))?;
+        let mut log = start_log(&self.model, &payload)
+            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
+        log.write(&response, Some(&usage))
+            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
 
         let provider_usage = ProviderUsage::new(model_config.model_name.clone(), usage);
         Ok(stream_from_single_message(message, provider_usage))

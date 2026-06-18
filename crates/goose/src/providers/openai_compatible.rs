@@ -15,7 +15,6 @@ use tokio_util::io::StreamReader;
 use super::api_client::ApiClient;
 use super::base::{stream_from_single_message, MessageStream, Provider};
 use super::retry::ProviderRetry;
-use super::utils::RequestLog;
 use crate::conversation::message::Message;
 use crate::providers::formats::openai_responses::responses_api_to_streaming_message;
 use goose_providers::errors::ProviderError;
@@ -23,6 +22,7 @@ use goose_providers::formats::openai::{
     create_request, get_usage, response_to_message, response_to_streaming_message,
 };
 use goose_providers::model::ModelConfig;
+use goose_providers::request_log::{start_log, LoggerHandleExt, RequestLogHandle};
 use rmcp::model::Tool;
 
 pub struct OpenAiCompatibleProvider {
@@ -128,7 +128,8 @@ impl Provider for OpenAiCompatibleProvider {
             tools,
             self.supports_streaming,
         )?;
-        let mut log = RequestLog::start(model_config, &payload)?;
+        let mut log = start_log(model_config, &payload)
+            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
 
         let completions_path = format!("{}chat/completions", self.completions_prefix);
         let response = self
@@ -161,7 +162,8 @@ impl Provider for OpenAiCompatibleProvider {
             log.write(
                 &serde_json::to_value(&message).unwrap_or_default(),
                 Some(&usage.usage),
-            )?;
+            )
+            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
 
             Ok(stream_from_single_message(message, usage))
         }
@@ -179,7 +181,7 @@ pub use super::http_status::handle_response as handle_response_openai_compat;
 
 pub fn stream_openai_compat(
     response: Response,
-    mut log: RequestLog,
+    mut log: Option<Box<dyn RequestLogHandle>>,
 ) -> Result<MessageStream, ProviderError> {
     let stream = response.bytes_stream().map_err(std::io::Error::other);
 
@@ -195,7 +197,8 @@ pub fn stream_openai_compat(
                 e.downcast::<ProviderError>()
                     .unwrap_or_else(ProviderError::stream_decode_error)
             )?;
-            log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())?;
+            log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
+                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
             yield (message, usage);
         }
     }))
@@ -203,7 +206,7 @@ pub fn stream_openai_compat(
 
 pub fn stream_responses_compat(
     response: Response,
-    mut log: RequestLog,
+    mut log: Option<Box<dyn RequestLogHandle>>,
 ) -> Result<MessageStream, ProviderError> {
     let stream = response.bytes_stream().map_err(std::io::Error::other);
 
@@ -219,7 +222,8 @@ pub fn stream_responses_compat(
                 e.downcast::<ProviderError>()
                     .unwrap_or_else(ProviderError::stream_decode_error)
             )?;
-            log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())?;
+            log.write(&message, usage.as_ref().map(|f| f.usage).as_ref())
+                    .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
             yield (message, usage);
         }
     }))

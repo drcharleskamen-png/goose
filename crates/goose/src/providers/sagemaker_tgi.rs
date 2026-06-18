@@ -12,7 +12,6 @@ use smithy_transport_reqwest::ReqwestHttpClient;
 
 use super::base::{ConfigKey, MessageStream, Provider, ProviderDef, ProviderMetadata};
 use super::retry::ProviderRetry;
-use super::utils::RequestLog;
 use crate::conversation::message::{Message, MessageContent};
 use crate::session_context::SESSION_ID_HEADER;
 use goose_providers::errors::ProviderError;
@@ -21,6 +20,7 @@ use chrono::Utc;
 use futures::future::BoxFuture;
 use goose_providers::conversation::token_usage::{ProviderUsage, Usage};
 use goose_providers::model::ModelConfig;
+use goose_providers::request_log::{start_log, LoggerHandleExt};
 use rmcp::model::Role;
 
 const SAGEMAKER_TGI_PROVIDER_NAME: &str = "sagemaker_tgi";
@@ -350,11 +350,13 @@ impl Provider for SageMakerTgiProvider {
             "messages": messages,
             "tools": tools
         });
-        let mut log = RequestLog::start(&self.model, &debug_payload)?;
+        let mut log = start_log(&self.model, &debug_payload)
+            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
         log.write(
             &serde_json::to_value(&message).unwrap_or_default(),
             Some(&usage),
-        )?;
+        )
+        .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
 
         let provider_usage = ProviderUsage::new(model_name.to_string(), usage);
         Ok(super::base::stream_from_single_message(

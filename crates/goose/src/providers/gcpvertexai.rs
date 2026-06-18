@@ -28,9 +28,9 @@ use crate::providers::formats::gcpvertexai::{
 use crate::providers::gcpauth::GcpAuth;
 use crate::providers::openai_compatible::{map_http_error_to_provider_error, sanitize_url};
 use crate::providers::retry::RetryConfig;
-use crate::providers::utils::RequestLog;
 use crate::session_context::SESSION_ID_HEADER;
 use goose_providers::errors::ProviderError;
+use goose_providers::request_log::{start_log, LoggerHandleExt};
 use rmcp::model::Tool;
 
 const GCP_VERTEX_AI_PROVIDER_NAME: &str = "gcp_vertex_ai";
@@ -618,7 +618,8 @@ impl Provider for GcpVertexAIProvider {
             }
         }
 
-        let mut log = RequestLog::start(model_config, &request)?;
+        let mut log = start_log(model_config, &request)
+            .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
 
         let response = self
             .post_stream(Some(session_id), &request, &context)
@@ -642,7 +643,8 @@ impl Provider for GcpVertexAIProvider {
 
             while let Some(message) = message_stream.next().await {
                 let (message, usage) = message.map_err(ProviderError::from_stream_error)?;
-                log.write(&message, usage.as_ref().map(|u| &u.usage))?;
+                log.write(&message, usage.as_ref().map(|u| &u.usage))
+                        .map_err(|e| anyhow::anyhow!("failed to log: {}", e))?;
                 yield (message, usage);
             }
         }))
