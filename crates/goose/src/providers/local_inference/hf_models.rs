@@ -391,16 +391,18 @@ fn shards_are_complete(shards: &[&HfApiSibling]) -> bool {
 }
 
 fn is_safe_relative_path(filename: &str) -> bool {
-    use std::path::{Component, Path};
-
     if filename.is_empty() {
         return false;
     }
 
     let normalized = filename.replace('\\', "/");
-    Path::new(&normalized)
-        .components()
-        .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
+    if normalized.starts_with('/') {
+        return false;
+    }
+
+    normalized
+        .split('/')
+        .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
 fn sanitize_siblings(siblings: Vec<HfApiSibling>) -> Vec<HfApiSibling> {
@@ -987,9 +989,10 @@ mod tests {
     fn test_is_safe_relative_path() {
         assert!(is_safe_relative_path("model-Q4_K_M.gguf"));
         assert!(is_safe_relative_path("subdir/model-Q4_K_M.gguf"));
-        assert!(is_safe_relative_path("./model.gguf"));
 
         assert!(!is_safe_relative_path(""));
+        assert!(!is_safe_relative_path("./model.gguf"));
+        assert!(!is_safe_relative_path("weights/./model.safetensors"));
         assert!(!is_safe_relative_path("../model.gguf"));
         assert!(!is_safe_relative_path("../../etc/cron.d/x.gguf"));
         assert!(!is_safe_relative_path("subdir/../../escape.gguf"));
