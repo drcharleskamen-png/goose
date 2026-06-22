@@ -51,16 +51,19 @@ impl MockProvider {
     }
 }
 
-impl ProviderDef for MockProvider {
-    type Provider = Self;
-
+impl goose::providers::base::ProviderDescriptor for MockProvider {
     fn metadata() -> ProviderMetadata {
         ProviderMetadata::empty()
     }
+}
+
+impl ProviderDef for MockProvider {
+    type Provider = Self;
 
     fn from_env(
         model: ModelConfig,
         _extensions: Vec<goose::config::ExtensionConfig>,
+        _tls_config: Option<goose::providers::api_client::TlsConfig>,
     ) -> futures::future::BoxFuture<'static, anyhow::Result<Self>> {
         Box::pin(async move { Ok(Self::new(model)) })
     }

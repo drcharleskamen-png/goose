@@ -1,8 +1,8 @@
+use crate::conversation::token_usage::ProviderUsage;
+use crate::images::ImageFormat;
 use anyhow::Error;
 use async_stream::try_stream;
 use futures::TryStreamExt;
-use goose_providers::conversation::token_usage::ProviderUsage;
-use goose_providers::images::ImageFormat;
 use reqwest::Response;
 #[cfg(test)]
 use reqwest::StatusCode;
@@ -15,14 +15,14 @@ use tokio_util::io::StreamReader;
 use super::api_client::ApiClient;
 use super::base::{stream_from_single_message, MessageStream, Provider};
 use super::retry::ProviderRetry;
-use super::utils::RequestLog;
 use crate::conversation::message::Message;
-use crate::providers::formats::openai_responses::responses_api_to_streaming_message;
-use goose_providers::errors::ProviderError;
-use goose_providers::formats::openai::{
+use crate::errors::ProviderError;
+use crate::formats::openai::{
     create_request, get_usage, response_to_message, response_to_streaming_message,
 };
-use goose_providers::model::ModelConfig;
+use crate::formats::openai_responses::responses_api_to_streaming_message;
+use crate::model::ModelConfig;
+use crate::request_log::{start_log, LoggerHandleExt, RequestLogHandle};
 use rmcp::model::Tool;
 
 pub struct OpenAiCompatibleProvider {
@@ -128,7 +128,7 @@ impl Provider for OpenAiCompatibleProvider {
             tools,
             self.supports_streaming,
         )?;
-        let mut log = RequestLog::start(model_config, &payload)?;
+        let mut log = start_log(model_config, &payload)?;
 
         let completions_path = format!("{}chat/completions", self.completions_prefix);
         let response = self
@@ -179,7 +179,7 @@ pub use super::http_status::handle_response as handle_response_openai_compat;
 
 pub fn stream_openai_compat(
     response: Response,
-    mut log: RequestLog,
+    mut log: Option<Box<dyn RequestLogHandle>>,
 ) -> Result<MessageStream, ProviderError> {
     let stream = response.bytes_stream().map_err(std::io::Error::other);
 
@@ -203,7 +203,7 @@ pub fn stream_openai_compat(
 
 pub fn stream_responses_compat(
     response: Response,
-    mut log: RequestLog,
+    mut log: Option<Box<dyn RequestLogHandle>>,
 ) -> Result<MessageStream, ProviderError> {
     let stream = response.bytes_stream().map_err(std::io::Error::other);
 
@@ -228,7 +228,7 @@ pub fn stream_responses_compat(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use goose_providers::model::ModelConfig;
+    use crate::model::ModelConfig;
     use serde_json::json;
     use test_case::test_case;
 
@@ -306,9 +306,10 @@ mod tests {
     fn build_request_respects_non_streaming_mode() {
         let provider = OpenAiCompatibleProvider::new(
             "test".to_string(),
-            ApiClient::new(
+            ApiClient::new_with_tls(
                 "http://localhost".to_string(),
                 super::super::api_client::AuthMethod::NoAuth,
+                None,
             )
             .unwrap(),
             ModelConfig::new_or_fail("test-model"),

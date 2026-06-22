@@ -138,9 +138,7 @@ impl TestProvider {
     }
 }
 
-impl ProviderDef for TestProvider {
-    type Provider = Self;
-
+impl goose_providers::base::ProviderDescriptor for TestProvider {
     fn metadata() -> ProviderMetadata {
         ProviderMetadata::new(
             Self::PROVIDER_NAME,
@@ -152,10 +150,15 @@ impl ProviderDef for TestProvider {
             vec![],
         )
     }
+}
+
+impl ProviderDef for TestProvider {
+    type Provider = Self;
 
     fn from_env(
         _model: ModelConfig,
         _extensions: Vec<crate::config::ExtensionConfig>,
+        _tls_config: Option<crate::providers::api_client::TlsConfig>,
     ) -> BoxFuture<'static, Result<Self::Provider>> {
         Box::pin(async { Err(anyhow!("TestProvider must be constructed explicitly")) })
     }

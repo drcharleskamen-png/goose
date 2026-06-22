@@ -361,9 +361,7 @@ mod tests {
             }
         }
 
-        impl ProviderDef for MockToolProvider {
-            type Provider = Self;
-
+        impl goose::providers::base::ProviderDescriptor for MockToolProvider {
             fn metadata() -> ProviderMetadata {
                 ProviderMetadata {
                     name: "mock".to_string(),
@@ -377,10 +375,15 @@ mod tests {
                     model_selection_hint: None,
                 }
             }
+        }
+
+        impl ProviderDef for MockToolProvider {
+            type Provider = Self;
 
             fn from_env(
                 _model: ModelConfig,
                 _extensions: Vec<goose::config::ExtensionConfig>,
+                _tls_config: Option<goose::providers::api_client::TlsConfig>,
             ) -> futures::future::BoxFuture<'static, anyhow::Result<Self>> {
                 Box::pin(async { Ok(Self::new()) })
             }
@@ -531,9 +534,7 @@ mod tests {
             }
         }
 
-        impl ProviderDef for SummarizationTestProvider {
-            type Provider = Self;
-
+        impl goose::providers::base::ProviderDescriptor for SummarizationTestProvider {
             fn metadata() -> ProviderMetadata {
                 ProviderMetadata {
                     name: "mock-summarization".to_string(),
@@ -547,10 +548,15 @@ mod tests {
                     model_selection_hint: None,
                 }
             }
+        }
+
+        impl ProviderDef for SummarizationTestProvider {
+            type Provider = Self;
 
             fn from_env(
                 _model: ModelConfig,
                 _extensions: Vec<goose::config::ExtensionConfig>,
+                _tls_config: Option<goose::providers::api_client::TlsConfig>,
             ) -> futures::future::BoxFuture<'static, anyhow::Result<Self>> {
                 Box::pin(async { Ok(Self::new()) })
             }
@@ -883,9 +889,7 @@ mod tests {
             }
         }
 
-        impl ProviderDef for MultiStepProvider {
-            type Provider = Self;
-
+        impl goose::providers::base::ProviderDescriptor for MultiStepProvider {
             fn metadata() -> ProviderMetadata {
                 ProviderMetadata {
                     name: "multi-step-mock".to_string(),
@@ -899,10 +903,15 @@ mod tests {
                     model_selection_hint: None,
                 }
             }
+        }
+
+        impl ProviderDef for MultiStepProvider {
+            type Provider = Self;
 
             fn from_env(
                 _model: ModelConfig,
                 _extensions: Vec<goose::config::ExtensionConfig>,
+                _tls_config: Option<goose::providers::api_client::TlsConfig>,
             ) -> futures::future::BoxFuture<'static, anyhow::Result<Self>> {
                 unimplemented!()
             }
@@ -1153,9 +1162,7 @@ mod tests {
             }
         }
 
-        impl ProviderDef for GoalTextProvider {
-            type Provider = Self;
-
+        impl goose::providers::base::ProviderDescriptor for GoalTextProvider {
             fn metadata() -> ProviderMetadata {
                 ProviderMetadata {
                     name: "goal-mock".to_string(),
@@ -1169,10 +1176,15 @@ mod tests {
                     model_selection_hint: None,
                 }
             }
+        }
+
+        impl ProviderDef for GoalTextProvider {
+            type Provider = Self;
 
             fn from_env(
                 _model: ModelConfig,
                 _extensions: Vec<goose::config::ExtensionConfig>,
+                _tls_config: Option<goose::providers::api_client::TlsConfig>,
             ) -> futures::future::BoxFuture<'static, anyhow::Result<Self>> {
                 Box::pin(async { Ok(Self::new()) })
             }
@@ -1591,12 +1603,12 @@ mod tests {
 
             run_turn(&agent, &session_id, "Turn 1").await?;
             let after_1 = session_manager.get_session(&session_id, false).await?;
-            assert_eq!(after_1.accumulated_total_tokens, Some(15));
+            assert_eq!(after_1.accumulated_usage.total_tokens, Some(15));
 
             run_turn(&agent, &session_id, "Turn 2").await?;
             let after_2 = session_manager.get_session(&session_id, false).await?;
-            assert_eq!(after_2.accumulated_total_tokens, Some(30));
-            assert_eq!(after_2.total_tokens, Some(15));
+            assert_eq!(after_2.accumulated_usage.total_tokens, Some(30));
+            assert_eq!(after_2.usage.total_tokens, Some(15));
 
             Ok(())
         }

@@ -12,7 +12,6 @@ use super::base::{
 };
 use super::cli_common::{error_from_event, extract_usage_tokens};
 use super::utils::filter_extensions_from_system_prompt;
-use crate::config::base::GeminiCliCommand;
 use crate::config::search_path::SearchPaths;
 use crate::config::Config;
 use crate::conversation::message::{Message, MessageContent};
@@ -47,7 +46,10 @@ pub struct GeminiCliProvider {
 }
 
 impl GeminiCliProvider {
-    pub async fn from_env(model: ModelConfig) -> Result<Self> {
+    pub async fn from_env(
+        model: ModelConfig,
+        _tls_config: Option<crate::providers::api_client::TlsConfig>,
+    ) -> Result<Self> {
         let config = Config::global();
         let command: String = config.get_gemini_cli_command().unwrap_or_default().into();
         let resolved_command = SearchPaths::builder().with_npm().resolve(&command)?;
@@ -154,9 +156,7 @@ impl GeminiCliProvider {
     }
 }
 
-impl ProviderDef for GeminiCliProvider {
-    type Provider = Self;
-
+impl goose_providers::base::ProviderDescriptor for GeminiCliProvider {
     fn metadata() -> ProviderMetadata {
         ProviderMetadata::new(
             GEMINI_CLI_PROVIDER_NAME,
@@ -165,17 +165,26 @@ impl ProviderDef for GeminiCliProvider {
             GEMINI_CLI_DEFAULT_MODEL,
             GEMINI_CLI_KNOWN_MODELS.to_vec(),
             GEMINI_CLI_DOC_URL,
-            vec![ConfigKey::from_value_type::<GeminiCliCommand>(
-                true, false, true,
+            vec![ConfigKey::new(
+                "GEMINI_CLI_COMMAND",
+                true,
+                false,
+                Some("gemini"),
+                true,
             )],
         )
     }
+}
+
+impl ProviderDef for GeminiCliProvider {
+    type Provider = Self;
 
     fn from_env(
         model: ModelConfig,
         _extensions: Vec<crate::config::ExtensionConfig>,
+        tls_config: Option<crate::providers::api_client::TlsConfig>,
     ) -> BoxFuture<'static, Result<Self::Provider>> {
-        Box::pin(Self::from_env(model))
+        Box::pin(Self::from_env(model, tls_config))
     }
 }
 

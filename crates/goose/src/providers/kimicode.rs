@@ -26,11 +26,11 @@ use super::oauth_device_flow::{
 };
 use super::openai_compatible::handle_status;
 use super::retry::ProviderRetry;
-use super::utils::RequestLog;
 use crate::conversation::message::Message;
 use futures::future::BoxFuture;
 use goose_providers::errors::ProviderError;
 use goose_providers::model::ModelConfig;
+use goose_providers::request_log::{start_log, LoggerHandleExt};
 use rmcp::model::Tool;
 
 const KIMI_CODE_PROVIDER_NAME: &str = "kimi_code";
@@ -162,7 +162,10 @@ impl KimiCodeProvider {
         TokenCache::new().clear().await
     }
 
-    pub async fn from_env(model: ModelConfig) -> Result<Self> {
+    pub async fn from_env(
+        model: ModelConfig,
+        _tls_config: Option<crate::providers::api_client::TlsConfig>,
+    ) -> Result<Self> {
         let model = crate::model_config::with_configured_fast_model(
             model,
             KIMI_CODE_PROVIDER_NAME,
@@ -340,9 +343,7 @@ impl KimiCodeProvider {
 
 // ── ProviderDef ───────────────────────────────────────────────────────────────
 
-impl ProviderDef for KimiCodeProvider {
-    type Provider = Self;
-
+impl goose_providers::base::ProviderDescriptor for KimiCodeProvider {
     fn metadata() -> ProviderMetadata {
         ProviderMetadata::new(
             KIMI_CODE_PROVIDER_NAME,
@@ -368,12 +369,17 @@ impl ProviderDef for KimiCodeProvider {
             "Once authorized, Goose will save your token automatically",
         ])
     }
+}
+
+impl ProviderDef for KimiCodeProvider {
+    type Provider = Self;
 
     fn from_env(
         model: ModelConfig,
         _extensions: Vec<crate::config::ExtensionConfig>,
+        tls_config: Option<crate::providers::api_client::TlsConfig>,
     ) -> BoxFuture<'static, Result<Self::Provider>> {
-        Box::pin(Self::from_env(model))
+        Box::pin(Self::from_env(model, tls_config))
     }
 }
 
@@ -404,7 +410,7 @@ impl Provider for KimiCodeProvider {
             .unwrap()
             .insert("stream".to_string(), Value::Bool(true));
 
-        let mut log = RequestLog::start(model_config, &payload)
+        let mut log = start_log(model_config, &payload)
             .map_err(|e| ProviderError::RequestFailed(e.to_string()))?;
 
         let response = self
@@ -491,6 +497,7 @@ impl Provider for KimiCodeProvider {
 mod tests {
     use super::*;
     use chrono::Utc;
+    use goose_providers::base::ProviderDescriptor as _;
     use serde_json::json;
     use wiremock::matchers::{body_string_contains, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};

@@ -760,9 +760,7 @@ impl Provider for XaiOAuthProvider {
     }
 }
 
-impl ProviderDef for XaiOAuthProvider {
-    type Provider = Self;
-
+impl goose_providers::base::ProviderDescriptor for XaiOAuthProvider {
     fn metadata() -> ProviderMetadata {
         ProviderMetadata::new(
             XAI_OAUTH_PROVIDER_NAME,
@@ -777,10 +775,15 @@ impl ProviderDef for XaiOAuthProvider {
             ],
         )
     }
+}
+
+impl ProviderDef for XaiOAuthProvider {
+    type Provider = Self;
 
     fn from_env(
         model: ModelConfig,
         _extensions: Vec<crate::config::ExtensionConfig>,
+        tls_config: Option<crate::providers::api_client::TlsConfig>,
     ) -> BoxFuture<'static, Result<Self::Provider>> {
         Box::pin(async move {
             let config = crate::config::Config::global();
@@ -790,9 +793,10 @@ impl ProviderDef for XaiOAuthProvider {
 
             let auth_provider = Arc::new(XaiOAuthAuthProvider::new(XaiAuthState::instance()));
             let auth_for_client = Arc::clone(&auth_provider);
-            let api_client = ApiClient::new(
+            let api_client = ApiClient::new_with_tls(
                 host,
                 AuthMethod::Custom(Box::new(SharedAuthProvider(auth_for_client))),
+                tls_config,
             )?;
 
             let inner = OpenAiCompatibleProvider::new(

@@ -8,7 +8,9 @@ use crate::acp::{
 };
 use crate::config::search_path::SearchPaths;
 use crate::config::{Config, GooseMode};
-use crate::providers::base::{current_working_dir, ProviderDef, ProviderMetadata};
+use crate::providers::base::{
+    current_working_dir, ProviderDef, ProviderDescriptor, ProviderMetadata,
+};
 use goose_providers::model::ModelConfig;
 
 pub(crate) const AMP_ACP_PROVIDER_NAME: &str = "amp-acp";
@@ -17,9 +19,7 @@ pub(crate) const AMP_ACP_BINARY: &str = "amp-acp";
 
 pub struct AmpAcpProvider;
 
-impl ProviderDef for AmpAcpProvider {
-    type Provider = AcpProvider;
-
+impl goose_providers::base::ProviderDescriptor for AmpAcpProvider {
     fn metadata() -> ProviderMetadata {
         ProviderMetadata::new(
             AMP_ACP_PROVIDER_NAME,
@@ -39,18 +39,24 @@ impl ProviderDef for AmpAcpProvider {
         ])
         .with_model_selection_hint("Use the Amp CLI to configure models")
     }
+}
+
+impl ProviderDef for AmpAcpProvider {
+    type Provider = AcpProvider;
 
     fn from_env(
         model: ModelConfig,
         extensions: Vec<crate::config::ExtensionConfig>,
+        tls_config: Option<crate::providers::api_client::TlsConfig>,
     ) -> BoxFuture<'static, Result<AcpProvider>> {
-        Self::from_env_with_working_dir(model, extensions, current_working_dir())
+        Self::from_env_with_working_dir(model, extensions, current_working_dir(), tls_config)
     }
 
     fn from_env_with_working_dir(
         model: ModelConfig,
         extensions: Vec<crate::config::ExtensionConfig>,
         working_dir: PathBuf,
+        _tls_config: Option<crate::providers::api_client::TlsConfig>,
     ) -> BoxFuture<'static, Result<AcpProvider>> {
         Box::pin(async move {
             let config = Config::global();

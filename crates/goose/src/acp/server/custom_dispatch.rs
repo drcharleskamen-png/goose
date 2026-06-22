@@ -12,22 +12,22 @@ impl GooseAcpAgent {
         self.handle_custom_request(cx, method, params).await
     }
 
-    #[custom_method(AddExtensionRequest)]
-    async fn dispatch_add_extension(
+    #[custom_method(AddSessionExtensionRequest)]
+    async fn dispatch_add_session_extension(
         &self,
         _cx: &ConnectionTo<Client>,
-        req: AddExtensionRequest,
+        req: AddSessionExtensionRequest,
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
-        self.on_add_extension(req).await
+        self.on_add_session_extension(req).await
     }
 
-    #[custom_method(RemoveExtensionRequest)]
-    async fn dispatch_remove_extension(
+    #[custom_method(RemoveSessionExtensionRequest)]
+    async fn dispatch_remove_session_extension(
         &self,
         _cx: &ConnectionTo<Client>,
-        req: RemoveExtensionRequest,
+        req: RemoveSessionExtensionRequest,
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
-        self.on_remove_extension(req).await
+        self.on_remove_session_extension(req).await
     }
 
     #[custom_method(GetToolsRequest)]

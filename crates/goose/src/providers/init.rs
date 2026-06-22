@@ -32,7 +32,6 @@ use super::{
     litellm::LiteLLMProvider,
     nanogpt::NanoGptProvider,
     ollama::OllamaProvider,
-    openai::OpenAiProvider,
     openrouter::OpenRouterProvider,
     pi_acp::PiAcpProvider,
     provider_registry::ProviderRegistry,
@@ -43,6 +42,7 @@ use super::{
 };
 use crate::config::ExtensionConfig;
 use crate::providers::base::ProviderType;
+use crate::providers::openai_def::OpenAiProviderDef;
 use crate::{
     config::declarative_providers::register_declarative_providers,
     providers::provider_registry::ProviderEntry,
@@ -54,7 +54,10 @@ use tokio::sync::OnceCell;
 static REGISTRY: OnceCell<RwLock<ProviderRegistry>> = OnceCell::const_new();
 
 async fn init_registry() -> RwLock<ProviderRegistry> {
-    let mut registry = ProviderRegistry::new().with_providers(|registry| {
+    let tls_config =
+        crate::config::tls::provider_tls_config_from_config(crate::config::Config::global())
+            .expect("failed to load provider TLS config");
+    let mut registry = ProviderRegistry::new(tls_config).with_providers(|registry| {
         use super::inventory::registrations;
 
         registry.register_with_inventory::<AmpAcpProvider>(
@@ -117,7 +120,7 @@ async fn init_registry() -> RwLock<ProviderRegistry> {
             true,
             Some(registrations::ollama_inventory()),
         );
-        registry.register_with_inventory::<OpenAiProvider>(
+        registry.register_with_inventory::<OpenAiProviderDef>(
             true,
             Some(registrations::openai_inventory()),
         );
