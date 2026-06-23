@@ -22,7 +22,7 @@ use crate::providers::toolshim::{
     augment_message_with_selected_tool_interpreter, convert_tool_messages_to_text,
     modify_system_prompt_for_tool_json, sanitize_residual_markers,
 };
-use goose_providers::conversation::token_usage::{ProviderUsage, Usage};
+use goose_providers::conversation::token_usage::{ProviderStats, ProviderUsage, Usage};
 use rmcp::model::Tool;
 use tracing::warn;
 
@@ -31,14 +31,18 @@ fn duration_millis(duration: Duration) -> u64 {
 }
 
 fn usage_with_timings(
-    usage: ProviderUsage,
+    mut usage: ProviderUsage,
     started_at: Instant,
     first_token_at: Option<Instant>,
 ) -> ProviderUsage {
-    usage.with_timings(
-        first_token_at.map(|time| duration_millis(time.duration_since(started_at))),
-        duration_millis(started_at.elapsed()),
-    )
+    let stats = usage.stats.get_or_insert_with(ProviderStats::default);
+    stats.time_to_first_token_ms = stats
+        .time_to_first_token_ms
+        .or_else(|| first_token_at.map(|time| duration_millis(time.duration_since(started_at))));
+    stats.elapsed_ms = stats
+        .elapsed_ms
+        .or_else(|| Some(duration_millis(started_at.elapsed())));
+    usage
 }
 
 async fn enhance_model_error(error: ProviderError, provider: &Arc<dyn Provider>) -> ProviderError {
