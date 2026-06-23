@@ -325,6 +325,15 @@ export type DownloadProgress = {
 
 export type DownloadStatus = 'downloading' | 'completed' | 'failed' | 'cancelled';
 
+export type DraftStats = {
+    accept_rate: number;
+    accepted_tokens: number;
+    draft_tokens: number;
+    model?: string | null;
+    rounds: number;
+    target_tokens: number;
+};
+
 export type EmbeddedResource = {
     _meta?: {
         [key: string]: unknown;
@@ -748,6 +757,9 @@ export type MessageEvent = {
     token_state: TokenState;
     type: 'Message';
 } | {
+    type: 'Usage';
+    usage: ProviderUsage;
+} | {
     error: string;
     type: 'Error';
 } | {
@@ -1073,6 +1085,13 @@ export type ProviderSecretsResponse = {
     secrets: Array<ProviderSecret>;
 };
 
+export type ProviderStats = {
+    draft?: DraftStats | null;
+    elapsed_ms?: number | null;
+    output_tokens?: number | null;
+    time_to_first_token_ms?: number | null;
+};
+
 export type ProviderTemplate = {
     api_url: string;
     doc_url: string;
@@ -1085,6 +1104,12 @@ export type ProviderTemplate = {
 };
 
 export type ProviderType = 'Preferred' | 'Builtin' | 'Declarative' | 'Custom';
+
+export type ProviderUsage = {
+    model: string;
+    stats?: ProviderStats | null;
+    usage: Usage;
+};
 
 export type ProvidersResponse = {
     providers: Array<ProviderDetails>;

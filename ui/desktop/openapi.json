@@ -4749,6 +4749,42 @@
           "cancelled"
         ]
       },
+      "DraftStats": {
+        "type": "object",
+        "required": [
+          "draft_tokens",
+          "accepted_tokens",
+          "target_tokens",
+          "rounds",
+          "accept_rate"
+        ],
+        "properties": {
+          "accept_rate": {
+            "type": "number",
+            "format": "double"
+          },
+          "accepted_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "draft_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "rounds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "target_tokens": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
       "EmbeddedResource": {
         "type": "object",
         "required": [
@@ -6156,6 +6192,24 @@
           {
             "type": "object",
             "required": [
+              "usage",
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Usage"
+                ]
+              },
+              "usage": {
+                "$ref": "#/components/schemas/ProviderUsage"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "error",
               "type"
             ],
@@ -7035,6 +7089,36 @@
           }
         }
       },
+      "ProviderStats": {
+        "type": "object",
+        "properties": {
+          "draft": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DraftStats"
+              }
+            ],
+            "nullable": true
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "time_to_first_token_ms": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "minimum": 0
+          }
+        }
+      },
       "ProviderTemplate": {
         "type": "object",
         "required": [
@@ -7085,6 +7169,29 @@
           "Declarative",
           "Custom"
         ]
+      },
+      "ProviderUsage": {
+        "type": "object",
+        "required": [
+          "model",
+          "usage"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "stats": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProviderStats"
+              }
+            ],
+            "nullable": true
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
       },
       "ProvidersResponse": {
         "type": "object",

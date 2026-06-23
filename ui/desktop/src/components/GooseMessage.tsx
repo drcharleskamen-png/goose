@@ -1,4 +1,5 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { ChartNoAxesColumnIncreasing } from 'lucide-react';
 import ImagePreview from './ImagePreview';
 import { formatMessageTimestamp } from '../utils/timeUtils';
 import MarkdownContent from './MarkdownContent';
@@ -16,12 +17,13 @@ import {
   ToolConfirmationData,
   NotificationEvent,
 } from '../types/message';
-import { Message } from '../api';
+import { Message, ProviderUsage } from '../api';
 import ToolCallConfirmation from './ToolCallConfirmation';
 import ElicitationRequest from './ElicitationRequest';
 import MessageCopyLink from './MessageCopyLink';
 import { cn } from '../utils';
 import { identifyConsecutiveToolCalls, shouldHideTimestamp } from '../utils/toolCallChaining';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 
 interface GooseMessageProps {
   sessionId: string;
@@ -37,6 +39,75 @@ interface GooseMessageProps {
   ) => Promise<boolean>;
 }
 
+type MessageUsageMetadata = Message['metadata'] & {
+  usage?: ProviderUsage;
+};
+
+function formatCount(value: number | null | undefined): string {
+  return typeof value === 'number' ? value.toLocaleString() : '—';
+}
+
+function formatDuration(valueMs: number | null | undefined): string {
+  if (typeof valueMs !== 'number') return '—';
+  if (valueMs < 1000) return `${valueMs} ms`;
+  return `${(valueMs / 1000).toFixed(2)} s`;
+}
+
+function formatTokensPerSecond(usage: ProviderUsage): string {
+  const outputTokens = usage.usage.output_tokens;
+  const elapsedMs = usage.stats?.elapsed_ms;
+  if (typeof outputTokens !== 'number' || typeof elapsedMs !== 'number' || elapsedMs <= 0) {
+    return '—';
+  }
+  return `${(outputTokens / (elapsedMs / 1000)).toFixed(1)} tok/s`;
+}
+
+function UsageStatsButton({ usage }: { usage?: ProviderUsage }) {
+  const [open, setOpen] = useState(false);
+  if (!usage) return null;
+
+  const rows = [
+    ['Input tokens', formatCount(usage.usage.input_tokens)],
+    ['Output tokens', formatCount(usage.usage.output_tokens)],
+    ['Total tokens', formatCount(usage.usage.total_tokens)],
+    ['Cache read', formatCount(usage.usage.cache_read_input_tokens)],
+    ['Cache write', formatCount(usage.usage.cache_write_input_tokens)],
+    ['Time to first token', formatDuration(usage.stats?.time_to_first_token_ms)],
+    ['Total time', formatDuration(usage.stats?.elapsed_ms)],
+    ['Tokens / second', formatTokensPerSecond(usage)],
+    ['Model', usage.model],
+  ];
+
+  return (
+    <>
+      <button
+        type="button"
+        title="Usage stats"
+        aria-label="Usage stats"
+        onClick={() => setOpen(true)}
+        className="inline-flex h-5 w-5 items-center justify-center rounded text-text-secondary/70 transition-colors hover:bg-background-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ChartNoAxesColumnIncreasing className="h-3.5 w-3.5" />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Usage stats</DialogTitle>
+          </DialogHeader>
+          <div className="divide-y divide-border/40 text-sm">
+            {rows.map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-6 py-2">
+                <span className="text-text-secondary">{label}</span>
+                <span className="font-mono text-text-primary text-right">{value}</span>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export default function GooseMessage({
   sessionId,
   message,
@@ -50,6 +121,7 @@ export default function GooseMessage({
 
   const { textContent: displayText, imagePaths } = getTextAndImageContent(message);
   const thinkingContent = getThinkingContent(message);
+  const usage = (message.metadata as MessageUsageMetadata).usage;
 
   const timestamp = useMemo(() => formatMessageTimestamp(message.created), [message.created]);
   const toolRequests = getToolRequests(message);
@@ -151,11 +223,14 @@ export default function GooseMessage({
 
             {toolRequests.length === 0 && (
               <div className="relative flex justify-start">
-                {!isStreaming && (
-                  <div className="text-xs font-mono text-text-secondary pt-1 transition-all duration-200 group-hover:-translate-y-4 group-hover:opacity-0">
-                    {timestamp}
-                  </div>
-                )}
+                <div className="flex items-center gap-1 pt-1">
+                  {!isStreaming && (
+                    <div className="text-xs font-mono text-text-secondary transition-all duration-200 group-hover:-translate-y-4 group-hover:opacity-0">
+                      {timestamp}
+                    </div>
+                  )}
+                  {!isStreaming && <UsageStatsButton usage={usage} />}
+                </div>
                 {message.content.every((content) => content.type === 'text') && !isStreaming && (
                   <div className="absolute left-0 pt-1">
                     <MessageCopyLink text={displayText} contentRef={contentRef} />
@@ -193,8 +268,13 @@ export default function GooseMessage({
                   );
                 })}
               </div>
-              <div className="text-xs text-text-secondary transition-all duration-200 group-hover:-translate-y-4 group-hover:opacity-0 pt-1">
-                {!isStreaming && !hideTimestamp && timestamp}
+              <div className="flex items-center gap-1 text-xs text-text-secondary pt-1">
+                {!isStreaming && !hideTimestamp && (
+                  <span className="transition-all duration-200 group-hover:-translate-y-4 group-hover:opacity-0">
+                    {timestamp}
+                  </span>
+                )}
+                {!isStreaming && <UsageStatsButton usage={usage} />}
               </div>
             </div>
           </div>

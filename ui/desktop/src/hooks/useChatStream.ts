@@ -7,6 +7,7 @@ import { ChatState } from '../types/chatState';
 import {
   getSession,
   Message,
+  ProviderUsage,
   resumeAgent,
   Session,
   sessionCancel,
@@ -167,6 +168,14 @@ function pushMessage(currentMessages: Message[], incomingMsg: Message): Message[
       };
     }
 
+    const incomingUsage = (incomingMsg.metadata as MessageUsageMetadata).usage;
+    if (incomingUsage) {
+      lastMsg.metadata = {
+        ...lastMsg.metadata,
+        usage: incomingUsage,
+      } as MessageUsageMetadata;
+    }
+
     if (
       lastContent?.type === 'text' &&
       newContent?.type === 'text' &&
@@ -197,6 +206,33 @@ function pushMessage(currentMessages: Message[], incomingMsg: Message): Message[
   }
 }
 
+type MessageUsageMetadata = Message['metadata'] & {
+  usage?: ProviderUsage;
+};
+
+type MessageWithUsage = Message & {
+  metadata: MessageUsageMetadata;
+};
+
+function withUsage(message: Message, usage: ProviderUsage): MessageWithUsage {
+  return {
+    ...message,
+    metadata: {
+      ...message.metadata,
+      usage,
+    },
+  };
+}
+
+function attachUsageToLastAssistantMessage(currentMessages: Message[], usage: ProviderUsage) {
+  const lastIndex = currentMessages.length - 1;
+  const message = currentMessages[lastIndex];
+  if (message?.role !== 'assistant' || !message.metadata.userVisible) {
+    return null;
+  }
+  return [...currentMessages.slice(0, lastIndex), withUsage(message, usage)];
+}
+
 function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
@@ -221,6 +257,7 @@ function createEventProcessor(
   let lastBatchUpdate = Date.now();
   let hasPendingUpdate = false;
   let pendingInference: Message['metadata']['inference'] | undefined;
+  let pendingUsage: ProviderUsage | undefined;
 
   const flushBatchedUpdates = () => {
     if (reduceMotion && hasPendingUpdate) {
@@ -304,6 +341,11 @@ function createEventProcessor(
           pendingInference = undefined;
         }
 
+        if (pendingUsage && msg.role === 'assistant' && msg.metadata.userVisible) {
+          msg = withUsage(msg, pendingUsage);
+          pendingUsage = undefined;
+        }
+
         currentMessages = pushMessage(currentMessages, msg);
 
         const hasToolConfirmation = msg.content.some(
@@ -363,6 +405,21 @@ function createEventProcessor(
       case 'Notification': {
         dispatch({ type: 'ADD_NOTIFICATION', payload: event as unknown as NotificationEvent });
         maybeHandlePlatformEvent((event as Record<string, unknown>).message, sessionId);
+        return false;
+      }
+      case 'Usage': {
+        const usage = (event as Record<string, unknown>).usage as ProviderUsage;
+        const updatedMessages = attachUsageToLastAssistantMessage(currentMessages, usage);
+        if (updatedMessages) {
+          currentMessages = updatedMessages;
+          if (!reduceMotion) {
+            dispatch({ type: 'SET_MESSAGES', payload: currentMessages });
+          } else {
+            hasPendingUpdate = true;
+          }
+        } else {
+          pendingUsage = usage;
+        }
         return false;
       }
       case 'Ping':

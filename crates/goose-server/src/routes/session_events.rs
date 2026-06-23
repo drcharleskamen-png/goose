@@ -480,7 +480,13 @@ pub async fn session_reply(
                             )
                             .await;
                         }
-                        Ok(Some(Ok(AgentEvent::Usage(_)))) => {}
+                        Ok(Some(Ok(AgentEvent::Usage(usage)))) => {
+                            publish(
+                                Some(task_request_id.clone()),
+                                MessageEvent::Usage { usage },
+                            )
+                            .await;
+                        }
                         Ok(Some(Ok(AgentEvent::HistoryReplaced(new_messages)))) => {
                             all_messages = new_messages.clone();
                             publish(
