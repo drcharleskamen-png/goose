@@ -97,6 +97,20 @@ pub async fn get_fast_model(
     }
 }
 
+/// Resolve a ladder-selected model name into a materialized `ModelConfig`
+/// against the same provider. Returns the supplied `model_config` unchanged
+/// when the selected name matches the main model.
+pub fn model_for_ladder(
+    provider_name: &str,
+    model_config: &ModelConfig,
+    model_name: &str,
+) -> Result<ModelConfig> {
+    if model_name == model_config.model_name {
+        return Ok(model_config.clone());
+    }
+    model_config_from_user_config(provider_name, model_name)
+}
+
 /// Run a completion for a lightweight "fast" task (session naming, compaction,
 /// summarization) using the provider's fast model, falling back to the supplied
 /// main `model_config` if the fast model errors.
