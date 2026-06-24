@@ -224,7 +224,7 @@ pub fn format_messages_with_options(
                 MessageContent::RedactedThinking(_) => {
                     continue;
                 }
-                MessageContent::SystemNotification(_) => {
+                MessageContent::SystemNotification(_) | MessageContent::Error(_) => {
                     continue;
                 }
                 MessageContent::ToolRequest(request) => match &request.tool_call {

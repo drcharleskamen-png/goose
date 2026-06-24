@@ -265,6 +265,40 @@ pub struct SystemNotificationContent {
     pub data: Option<serde_json::Value>,
 }
 
+/// The category of an error that occurred during a turn, in the conversation's
+/// own vocabulary. Mirrors the recoverability distinctions the transcript cares
+/// about rather than every provider-internal variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum MessageErrorKind {
+    ContextLengthExceeded,
+    CreditsExhausted,
+    Network,
+    Other,
+}
+
+impl From<&crate::errors::ProviderError> for MessageErrorKind {
+    fn from(err: &crate::errors::ProviderError) -> Self {
+        use crate::errors::ProviderError;
+        match err {
+            ProviderError::ContextLengthExceeded(_) => MessageErrorKind::ContextLengthExceeded,
+            ProviderError::CreditsExhausted { .. } => MessageErrorKind::CreditsExhausted,
+            ProviderError::NetworkError(_) => MessageErrorKind::Network,
+            _ => MessageErrorKind::Other,
+        }
+    }
+}
+
+/// An error that occurred during a turn, recorded as durable conversation state
+/// (shown to the user, hidden from the model) rather than a transient
+/// out-of-band notification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorContent {
+    pub kind: MessageErrorKind,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 /// Content passed inside a message, which can be both simple content and tool content
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -279,6 +313,7 @@ pub enum MessageContent {
     Thinking(ThinkingContent),
     RedactedThinking(RedactedThinkingContent),
     SystemNotification(SystemNotificationContent),
+    Error(ErrorContent),
 }
 
 impl fmt::Display for MessageContent {
@@ -320,6 +355,7 @@ impl fmt::Display for MessageContent {
             MessageContent::SystemNotification(r) => {
                 write!(f, "[SystemNotification: {}]", r.msg)
             }
+            MessageContent::Error(e) => write!(f, "[Error: {}]", e.message),
         }
     }
 }
@@ -543,6 +579,21 @@ impl MessageContent {
     pub fn as_system_notification(&self) -> Option<&SystemNotificationContent> {
         if let MessageContent::SystemNotification(ref notification) = self {
             Some(notification)
+        } else {
+            None
+        }
+    }
+
+    pub fn error<S: Into<String>>(kind: MessageErrorKind, message: S) -> Self {
+        MessageContent::Error(ErrorContent {
+            kind,
+            message: message.into(),
+        })
+    }
+
+    pub fn as_error(&self) -> Option<&ErrorContent> {
+        if let MessageContent::Error(ref error) = self {
+            Some(error)
         } else {
             None
         }
@@ -1030,6 +1081,38 @@ impl Message {
             data,
         ))
         .with_metadata(MessageMetadata::user_only())
+    }
+
+    pub fn with_error<S: Into<String>>(self, kind: MessageErrorKind, message: S) -> Self {
+        self.with_content(MessageContent::error(kind, message))
+            .with_metadata(MessageMetadata::user_only())
+    }
+
+    /// Build a user-facing error message from a provider error: shown to the
+    /// user, hidden from the model, tagged with a [`MessageErrorKind`] so
+    /// recovery logic can dispatch on it.
+    pub fn from_provider_error(err: &crate::errors::ProviderError) -> Self {
+        use crate::errors::ProviderError;
+        let text = match err {
+            ProviderError::NetworkError(_) => {
+                format!("{err}\n\nPlease resend your message to try again.")
+            }
+            ProviderError::ContextLengthExceeded(_) => {
+                format!("{err}\n\nThe conversation is too long for the model's context window.")
+            }
+            _ => format!(
+                "Ran into this error: {err}.\n\n\
+                 Please retry if you think this is a transient or recoverable error."
+            ),
+        };
+        Message::assistant().with_error(MessageErrorKind::from(err), text)
+    }
+
+    /// The [`MessageErrorKind`] of this message, if it carries an error.
+    pub fn error_kind(&self) -> Option<MessageErrorKind> {
+        self.content
+            .iter()
+            .find_map(|c| c.as_error().map(|e| e.kind))
     }
 
     pub fn with_visibility(mut self, user_visible: bool, agent_visible: bool) -> Self {

@@ -432,6 +432,7 @@ pub fn format_message_for_compacting(msg: &Message) -> String {
             MessageContent::SystemNotification(notification) => {
                 Some(format!("system_notification: {}", notification.msg))
             }
+            MessageContent::Error(error) => Some(format!("error: {}", error.message)),
         })
         .collect();
 

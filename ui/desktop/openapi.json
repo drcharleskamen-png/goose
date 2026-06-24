@@ -4974,6 +4974,22 @@
           "description": "A map of environment variables to set, e.g. API_KEY -> some_secret, HOST -> host"
         }
       },
+      "ErrorContent": {
+        "type": "object",
+        "description": "An error that occurred during a turn, recorded as durable conversation state\n(shown to the user, hidden from the model) rather than a transient\nout-of-band notification.",
+        "required": [
+          "kind",
+          "message"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MessageErrorKind"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "required": [
@@ -6263,12 +6279,43 @@
                 }
               }
             ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorContent"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "error"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         ],
         "description": "Content passed inside a message, which can be both simple content and tool content",
         "discriminator": {
           "propertyName": "type"
         }
+      },
+      "MessageErrorKind": {
+        "type": "string",
+        "description": "The category of an error that occurred during a turn, in the conversation's\nown vocabulary. Mirrors the recoverability distinctions the transcript cares\nabout rather than every provider-internal variant.",
+        "enum": [
+          "contextLengthExceeded",
+          "creditsExhausted",
+          "network",
+          "other"
+        ]
       },
       "MessageEvent": {
         "oneOf": [

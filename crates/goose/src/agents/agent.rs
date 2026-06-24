@@ -65,7 +65,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument, warn};
 
-const DEFAULT_MAX_TURNS: u32 = 1000;
+pub(crate) const DEFAULT_MAX_TURNS: u32 = 1000;
 const DEFAULT_STOP_HOOK_BLOCK_CAP: u32 = 8;
 const COMPACTION_THINKING_TEXT: &str = "goose is compacting the conversation...";
 const DEFAULT_FRONTEND_INSTRUCTIONS: &str = "The following tools are provided directly by the frontend and will be executed by the frontend when called.";
@@ -1493,8 +1493,8 @@ impl Agent {
     ) -> Result<BoxStream<'_, Result<AgentEvent>>> {
         if super::state_machine::enabled() {
             tracing::info!("dispatching reply via experimental state machine");
-            let _ = cancel_token;
-            return super::state_machine::reply(self, user_message, session_config).await;
+            return super::state_machine::reply(self, user_message, session_config, cancel_token)
+                .await;
         }
 
         let session_manager = self.config.session_manager.clone();

@@ -9,7 +9,16 @@
 
 mod machine;
 mod operation;
+mod ops_compaction;
+mod ops_exit_on_error;
 mod ops_llm;
+mod ops_maxturns;
+mod ops_toolcalling;
+
+pub mod test_helpers;
+
+#[cfg(test)]
+mod tests;
 
 pub use machine::reply;
 

@@ -413,6 +413,16 @@ export type Envs = {
     [key: string]: string;
 };
 
+/**
+ * An error that occurred during a turn, recorded as durable conversation state
+ * (shown to the user, hidden from the model) rather than a transient
+ * out-of-band notification.
+ */
+export type ErrorContent = {
+    kind: MessageErrorKind;
+    message: string;
+};
+
 export type ErrorResponse = {
     message: string;
 };
@@ -794,7 +804,16 @@ export type MessageContent = (TextContent & {
     type: 'redactedThinking';
 }) | (SystemNotificationContent & {
     type: 'systemNotification';
+}) | (ErrorContent & {
+    type: 'error';
 });
+
+/**
+ * The category of an error that occurred during a turn, in the conversation's
+ * own vocabulary. Mirrors the recoverability distinctions the transcript cares
+ * about rather than every provider-internal variant.
+ */
+export type MessageErrorKind = 'contextLengthExceeded' | 'creditsExhausted' | 'network' | 'other';
 
 export type MessageEvent = {
     message: Message;
