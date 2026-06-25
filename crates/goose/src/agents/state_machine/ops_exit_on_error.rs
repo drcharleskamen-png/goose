@@ -21,7 +21,7 @@ impl Operation for ExitOnErrorOperation {
         session
             .conversation
             .as_ref()
-            .and_then(|c| c.messages().last())
+            .and_then(|c| c.last())
             .and_then(|m| m.error_kind())
             .is_some()
     }

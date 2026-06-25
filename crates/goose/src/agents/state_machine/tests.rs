@@ -191,6 +191,25 @@ async fn slash_command_yields_without_calling_provider() -> Result<()> {
 }
 
 #[tokio::test]
+async fn unknown_slash_text_falls_through_to_provider() -> Result<()> {
+    let harness = TestHarness::with_steps([Step::Text("saw it".to_string())]).await;
+
+    let messages = harness.run("/not-a-command", 10).await?;
+
+    assert_eq!(harness.provider.call_count(), 1);
+    assert_eq!(messages.len(), 1, "events: {messages:#?}");
+    assert_eq!(messages[0].as_concat_text(), "saw it");
+
+    let persisted = harness.persisted_messages().await?;
+    assert_eq!(persisted.len(), 2);
+    assert_eq!(persisted[0].as_concat_text(), "/not-a-command");
+    assert!(persisted[0].is_user_visible());
+    assert!(persisted[0].is_agent_visible());
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn goal_slash_command_starts_turn_with_hidden_kickoff() -> Result<()> {
     let harness = TestHarness::with_steps([Step::Text("working on it".to_string())]).await;
 

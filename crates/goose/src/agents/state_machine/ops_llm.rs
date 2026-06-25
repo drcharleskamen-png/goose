@@ -58,7 +58,7 @@ impl Operation for LlmOperation {
             session
                 .conversation
                 .as_ref()
-                .and_then(|c| c.messages().last())
+                .and_then(|c| c.last())
                 .map(|m| &m.role),
             Some(Role::User)
         )

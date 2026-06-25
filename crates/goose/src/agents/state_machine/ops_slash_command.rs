@@ -1,10 +1,10 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use rmcp::model::Role;
 
-use crate::agents::execute_commands::{command_starts_turn, parse_slash_command, COMPACT_TRIGGERS};
+use crate::agents::execute_commands::{
+    command_starts_turn, is_known_slash_command, parse_slash_command, COMPACT_TRIGGERS,
+};
 use crate::agents::state_machine::operation::{Emitter, Operation, TurnEffect, TurnOutcome};
 use crate::agents::{Agent, AgentEvent};
 use crate::conversation::message::Message;
@@ -12,15 +12,11 @@ use crate::session::Session;
 
 pub struct SlashCommandOperation<'a> {
     agent: &'a Agent,
-    consumed: AtomicBool,
 }
 
 impl<'a> SlashCommandOperation<'a> {
     pub fn new(agent: &'a Agent) -> Self {
-        Self {
-            agent,
-            consumed: AtomicBool::new(false),
-        }
+        Self { agent }
     }
 }
 
@@ -31,22 +27,19 @@ impl Operation for SlashCommandOperation<'_> {
     }
 
     fn applies(&self, session: &Session) -> bool {
-        if self.consumed.load(Ordering::SeqCst) {
-            return false;
-        }
-
         let Some(message) = session.conversation.as_ref().and_then(|c| c.last()) else {
             return false;
         };
 
         message.role == Role::User
             && message.is_agent_visible()
-            && parse_slash_command(&message.as_concat_text()).is_some()
+            && is_known_slash_command(
+                &message.as_concat_text(),
+                Some(session.working_dir.as_path()),
+            )
     }
 
     async fn run(&self, session: &Session, emit: Emitter) -> Result<TurnOutcome> {
-        self.consumed.store(true, Ordering::SeqCst);
-
         let user_message = session
             .conversation
             .as_ref()

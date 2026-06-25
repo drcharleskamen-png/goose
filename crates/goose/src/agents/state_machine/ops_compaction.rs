@@ -94,7 +94,7 @@ impl Operation for CompactionOperation {
         // Reactive: the LLM op just appended a ContextLengthExceeded error.
         // Compact and retry, up to a cap, before letting ExitOnError take it.
         if matches!(
-            conversation.messages().last().and_then(|m| m.error_kind()),
+            conversation.last().and_then(|m| m.error_kind()),
             Some(MessageErrorKind::ContextLengthExceeded)
         ) {
             return context_error_count(conversation) <= MAX_CONTEXT_ERROR_RETRIES;
@@ -103,7 +103,6 @@ impl Operation for CompactionOperation {
         // Proactive: a pending user turn whose recorded token total is over the
         // threshold. We compact before the doomed LLM call rather than after.
         let last_is_user = conversation
-            .messages()
             .last()
             .map(|m| m.role == rmcp::model::Role::User && !m.is_tool_response())
             .unwrap_or(false);
@@ -126,7 +125,7 @@ impl Operation for CompactionOperation {
         // must not feed into the summary; compact everything before it.
         let trimmed;
         let conversation = if matches!(
-            full.messages().last().and_then(|m| m.error_kind()),
+            full.last().and_then(|m| m.error_kind()),
             Some(MessageErrorKind::ContextLengthExceeded)
         ) {
             let mut messages = full.messages().to_vec();

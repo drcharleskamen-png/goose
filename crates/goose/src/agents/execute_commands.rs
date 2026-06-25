@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use anyhow::{anyhow, Result};
 
@@ -86,6 +87,20 @@ pub fn parse_slash_command(message_text: &str) -> Option<ParsedSlashCommand<'_>>
 
 pub fn list_commands() -> &'static [CommandDef] {
     COMMANDS
+}
+
+pub fn is_known_slash_command(message_text: &str, working_dir: Option<&Path>) -> bool {
+    let Some(parsed) = parse_slash_command(message_text) else {
+        return false;
+    };
+
+    COMMANDS
+        .iter()
+        .any(|command| command.name == parsed.command)
+        || recipe_slash_command::get_recipe_for_command(parsed.command).is_some()
+        || skill_slash_command::list_commands(working_dir)
+            .into_iter()
+            .any(|command| command.name.eq_ignore_ascii_case(parsed.command))
 }
 
 fn is_clear_goal_param(params_str: &str) -> bool {
@@ -403,7 +418,6 @@ impl Agent {
                     .await?
                     .conversation
                     .ok_or_else(|| anyhow!("No conversation found"))?
-                    .messages()
                     .last()
                     .cloned()
                     .ok_or_else(|| anyhow!("No messages in conversation"))?;

@@ -32,11 +32,7 @@ impl ToolExecutionOperation {
 }
 
 fn pending_tool_requests(session: &Session) -> Vec<ToolRequest> {
-    let Some(last) = session
-        .conversation
-        .as_ref()
-        .and_then(|c| c.messages().last())
-    else {
+    let Some(last) = session.conversation.as_ref().and_then(|c| c.last()) else {
         return Vec::new();
     };
 
