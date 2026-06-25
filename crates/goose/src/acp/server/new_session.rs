@@ -294,7 +294,10 @@ mod tests {
         let mut request = NewSessionRequest::new(PathBuf::from("/tmp"));
         if let Some(text) = system_prompt {
             let mut meta = serde_json::Map::new();
-            meta.insert("systemPrompt".into(), serde_json::Value::String(text.to_string()));
+            meta.insert(
+                "systemPrompt".into(),
+                serde_json::Value::String(text.to_string()),
+            );
             request.meta = Some(meta);
         }
         request
