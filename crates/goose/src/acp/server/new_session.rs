@@ -67,6 +67,10 @@ impl GooseAcpAgent {
         recipe: Option<(Recipe, PathBuf)>,
         project_id: Option<String>,
     ) -> Result<NewSessionResponse, agent_client_protocol::Error> {
+        // Read the ACP `systemPrompt` before `args` is moved into
+        // `configure_new_session`; the agent it applies to doesn't exist yet.
+        let system_prompt = client_system_prompt(&args)?;
+
         let rendered_recipe = self
             .configure_new_session(cx, config, session, args, recipe, project_id)
             .await?;
@@ -77,6 +81,22 @@ impl GooseAcpAgent {
             .await?;
         if let Some(recipe) = &rendered_recipe {
             self.apply_recipe(&agent, recipe).await;
+        }
+        // Incorporate the client's `systemPrompt` additively under a distinct
+        // key from the recipe's, never replacing goose's own instructions. The
+        // RFD requires an error (and no session) if incorporation fails; a
+        // literal-string insert is infallible, so that clause holds vacuously
+        // and no error path is added.
+        if let Some(text) = system_prompt {
+            agent
+                .extend_system_prompt("system_prompt".into(), text.clone())
+                .await;
+            let _ = self
+                .session_manager
+                .update(&session.id)
+                .system_prompt(Some(text))
+                .apply()
+                .await;
         }
 
         let reloaded_session = self.reload_session(&session.id).await?;
@@ -257,4 +277,53 @@ fn meta_goose_extensions(
         .map_err(|e| {
             agent_client_protocol::Error::invalid_params().data(format!("enabledExtensions: {e}"))
         })
+}
+
+fn client_system_prompt(
+    args: &NewSessionRequest,
+) -> Result<Option<String>, agent_client_protocol::Error> {
+    let text = meta_string(args.meta.as_ref(), "systemPrompt")?;
+    Ok(text.filter(|t| !t.trim().is_empty()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request_with_system_prompt(system_prompt: Option<&str>) -> NewSessionRequest {
+        let mut request = NewSessionRequest::new(PathBuf::from("/tmp"));
+        if let Some(text) = system_prompt {
+            let mut meta = serde_json::Map::new();
+            meta.insert("systemPrompt".into(), serde_json::Value::String(text.to_string()));
+            request.meta = Some(meta);
+        }
+        request
+    }
+
+    #[test]
+    fn test_client_system_prompt_present_returns_text() {
+        let request = request_with_system_prompt(Some("Be concise."));
+        assert_eq!(
+            client_system_prompt(&request).unwrap(),
+            Some("Be concise.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_client_system_prompt_absent_returns_none() {
+        let request = request_with_system_prompt(None);
+        assert_eq!(client_system_prompt(&request).unwrap(), None);
+    }
+
+    #[test]
+    fn test_client_system_prompt_whitespace_only_returns_none() {
+        let request = request_with_system_prompt(Some("   \n\t "));
+        assert_eq!(client_system_prompt(&request).unwrap(), None);
+    }
+
+    #[test]
+    fn test_client_system_prompt_empty_string_returns_none() {
+        let request = request_with_system_prompt(Some(""));
+        assert_eq!(client_system_prompt(&request).unwrap(), None);
+    }
 }
