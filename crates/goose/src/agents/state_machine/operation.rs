@@ -29,6 +29,11 @@ pub enum OperationResult {
 pub enum TurnEffect {
     AppendMessage(Message),
     ReplaceConversation(Conversation),
+    PatchToolRequestMeta {
+        message_id: String,
+        tool_call_id: String,
+        patch: serde_json::Value,
+    },
     SetMessageVisibility {
         message_id: String,
         user_visible: bool,

@@ -35,7 +35,8 @@ state_machine/
 - [x] `GOOSE_STATE_MACHINE=1` flag dispatch from `Agent::reply`
 - [x] `Operation` trait with `run(&Session, Emitter) -> OperationResult`
 - [x] Streaming `LlmOperation` with tools (model can emit `ToolRequest`s)
-- [x] `ToolExecutionOperation` — bare execute-and-respond (no approval/frontend/chat-mode)
+- [x] `ToolApprovalOperation` — annotates tool requests with approval decisions before execution
+- [x] `ToolExecutionOperation` — bare execute-and-respond (no frontend/chat-mode)
 - [x] `MaxTurnsOperation` — halts the loop after `max_turns` assistant turns this request
 - [x] `CompactionOperation` — proactive auto-compact before an LLM call (returns `ReplaceConversation`)
 - [x] Machine driver applies ordered `TurnEffect`s
@@ -127,6 +128,11 @@ they exist.
 pub enum TurnEffect {
     AppendMessage(Message),
     ReplaceConversation(Conversation),
+    PatchToolRequestMeta {
+        message_id: String,
+        tool_call_id: String,
+        patch: serde_json::Value,
+    },
     SetMessageVisibility {
         message_id: String,
         user_visible: bool,
@@ -207,8 +213,8 @@ Roughly in order of value, with the code in `agents/agent.rs` they replace:
 | Operation | Replaces | Notes |
 |---|---|---|
 | **LLM** | `stream_response_from_provider` + the main `while let Some(next) = stream.next()` arms | **Landed.** Streams the response with the real `tools` list, so the model can emit `ToolRequest`s. Persists the assistant message (requests + thinking/reasoning) as-is. Constructor: `(Arc<dyn Provider>, system_prompt, tools)`. |
-| **Tool approval** | `tool_inspection_manager.inspect_tools` + `process_inspection_results_with_permission_inspector` + `handle_approval_tool_requests` | Not started. Annotates `ToolRequest`s with approval state. YOLO short-circuits. Approval is a **separate op** that runs *before* execution; the state lives on the request in the conversation, not in a side map. |
-| **Tool execution** | `handle_approved_and_denied_tools` + `combined.next()` `tokio::select!` loop + frontend tool sub-flow | **Landed (bare path only).** Applies when the last message is an assistant message with parseable tool requests. Dispatches each via `dispatch_tool_call`, drains streams forwarding `McpNotification`s, collects responses into one user message, `AppendMessages`. On cancel: cancels the dispatch token and synthesizes interrupted-tool responses so the committed tail is valid. Constructor: `(&Agent)`. **Deferred:** approval/inspection, frontend tools, chat-mode skip, the elicitation/100ms-tick drain loop, `MANAGE_EXTENSIONS`/`tools_updated`, unparseable-tool-call error path. |
+| **Tool approval** | `tool_inspection_manager.inspect_tools` + `process_inspection_results_with_permission_inspector` + `handle_approval_tool_requests` | **Landed.** Runs before execution, stores the decision in `ToolRequest.tool_meta`, emits `ActionRequired` and waits on the existing confirmation router when needed. The state lives on the request in the conversation, not in a side map. |
+| **Tool execution** | `handle_approved_and_denied_tools` + `combined.next()` `tokio::select!` loop + frontend tool sub-flow | **Landed (bare path only).** Applies when the last message is an assistant message with approved/denied tool requests. Dispatches approved requests via `dispatch_tool_call`, turns denied requests into declined `ToolResponse`s, drains streams forwarding `McpNotification`s, collects responses into one user message, `AppendMessages`. On cancel: cancels the dispatch token and synthesizes interrupted-tool responses so the committed tail is valid. Constructor: `(&Agent)`. **Deferred:** frontend tools, chat-mode skip, the elicitation/100ms-tick drain loop, `MANAGE_EXTENSIONS`/`tools_updated`, unparseable-tool-call error path. |
 | **Compaction** | `check_if_compaction_needed` block + `ContextLengthExceeded` arm in `reply()` | **Landed (proactive + reactive).** Proactive: cheap synchronous ratio check (`session.total_tokens` vs model context limit, both captured at construction) when the last message is a pending user prompt. Reactive: when the tail is a `ContextLengthExceeded` error message (the LLM op appends one instead of bubbling), compact-and-retry up to `MAX_CONTEXT_ERROR_RETRIES`, counted from the conversation. `run` strips the trailing error before summarizing. The machine clears `total_tokens` after a replace so it can't re-trigger on a stale count. Constructor: `(Arc<dyn Provider>)`. **Deferred:** per-compaction usage metrics. |
 
 ### Errors as conversation state

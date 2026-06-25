@@ -9,6 +9,10 @@ use rmcp::model::{CallToolResult, Content, ErrorCode, ErrorData, Role};
 use crate::agents::agent::{tool_stream, ToolStreamItem};
 use crate::agents::extension_manager::ExtensionManager;
 use crate::agents::state_machine::operation::{Emitter, Operation, OperationResult};
+use crate::agents::state_machine::ops_tool_approval::{
+    TOOL_APPROVAL_ALLOWED, TOOL_APPROVAL_DENIED, TOOL_APPROVAL_KEY,
+};
+use crate::agents::tool_execution::DECLINED_RESPONSE;
 use crate::agents::tool_execution::{ToolCallContext, ToolCallResult};
 use crate::agents::AgentEvent;
 use crate::conversation::message::{Message, MessageContent, ToolRequest};
@@ -43,10 +47,22 @@ fn pending_tool_requests(session: &Session) -> Vec<ToolRequest> {
     last.content
         .iter()
         .filter_map(|c| match c {
-            MessageContent::ToolRequest(req) if req.tool_call.is_ok() => Some(req.clone()),
+            MessageContent::ToolRequest(req)
+                if req.tool_call.is_ok() && approval_state(req).is_some() =>
+            {
+                Some(req.clone())
+            }
             _ => None,
         })
         .collect()
+}
+
+fn approval_state(request: &ToolRequest) -> Option<&str> {
+    request
+        .tool_meta
+        .as_ref()
+        .and_then(|meta| meta.get(TOOL_APPROVAL_KEY))
+        .and_then(|value| value.as_str())
 }
 
 #[async_trait]
@@ -63,6 +79,9 @@ impl Operation for ToolExecutionOperation {
 
         let mut tool_streams = Vec::new();
         for request in &requests {
+            if approval_state(request) != Some(TOOL_APPROVAL_ALLOWED) {
+                continue;
+            }
             let tool_call = request
                 .tool_call
                 .clone()
@@ -99,6 +118,17 @@ impl Operation for ToolExecutionOperation {
 
         let mut combined = futures::stream::select_all(tool_streams);
         let mut response = Message::user().with_generated_id();
+        for request in &requests {
+            if approval_state(request) == Some(TOOL_APPROVAL_DENIED) {
+                response.add_tool_response_with_metadata(
+                    request.id.clone(),
+                    Ok(CallToolResult::error(vec![Content::text(
+                        DECLINED_RESPONSE,
+                    )])),
+                    request.metadata.as_ref(),
+                );
+            }
+        }
 
         loop {
             tokio::select! {

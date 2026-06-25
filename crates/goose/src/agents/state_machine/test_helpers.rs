@@ -359,6 +359,14 @@ impl TestHarness {
         self
     }
 
+    pub async fn with_goose_mode(self, mode: GooseMode) -> Self {
+        self.agent
+            .update_goose_mode(mode, &self.session_id)
+            .await
+            .unwrap();
+        self
+    }
+
     /// Set the session's recorded token total, used by proactive compaction.
     pub async fn set_total_tokens(&self, tokens: i32) {
         self.agent

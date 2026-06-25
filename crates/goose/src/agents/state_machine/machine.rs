@@ -15,6 +15,7 @@ use crate::agents::state_machine::ops_exit_on_error::ExitOnErrorOperation;
 use crate::agents::state_machine::ops_llm::LlmOperation;
 use crate::agents::state_machine::ops_maxturns::MaxTurnsOperation;
 use crate::agents::state_machine::ops_slash_command::SlashCommandOperation;
+use crate::agents::state_machine::ops_tool_approval::ToolApprovalOperation;
 use crate::agents::state_machine::ops_toolcalling::ToolExecutionOperation;
 use crate::agents::types::SessionConfig;
 use crate::agents::{Agent, AgentEvent};
@@ -72,6 +73,9 @@ pub async fn reply(
     let (tools, _toolshim_tools, system_prompt, model_config) = agent
         .prepare_tools_and_prompt(&session_id, &working_dir)
         .await?;
+    if agent.goose_mode().await == crate::config::GooseMode::SmartApprove {
+        agent.tool_inspection_manager.apply_tool_annotations(&tools);
+    }
 
     let provider = agent.provider().await?;
 
@@ -94,6 +98,7 @@ pub async fn reply(
             system_prompt,
             tools,
         )),
+        Arc::new(ToolApprovalOperation::new(agent)),
         Arc::new(ToolExecutionOperation::new(agent.extension_manager.clone())),
         Arc::new(ExitOnErrorOperation),
     ];
@@ -167,6 +172,15 @@ pub async fn reply(
                             .apply()
                             .await?;
                         yield AgentEvent::HistoryReplaced(conversation);
+                    }
+                    TurnEffect::PatchToolRequestMeta {
+                        message_id,
+                        tool_call_id,
+                        patch,
+                    } => {
+                        session_manager
+                            .update_tool_request_meta(&session.id, &message_id, &tool_call_id, patch)
+                            .await?;
                     }
                     TurnEffect::SetMessageVisibility {
                         message_id,

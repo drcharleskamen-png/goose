@@ -1,11 +1,17 @@
 use anyhow::Result;
+use futures::StreamExt;
 use rmcp::model::Role;
 
 use crate::agents::state_machine::test_helpers::{
     tool_response_text, ScriptedProvider, Step, TestHarness,
 };
-use crate::agents::AgentEvent;
-use crate::conversation::message::Message;
+use crate::agents::tool_execution::DECLINED_RESPONSE;
+use crate::agents::types::SessionConfig;
+use crate::agents::{state_machine, AgentEvent};
+use crate::config::GooseMode;
+use crate::conversation::message::{ActionRequiredData, Message, MessageContent};
+use crate::permission::permission_confirmation::PrincipalType;
+use crate::permission::{Permission, PermissionConfirmation};
 use std::sync::Arc;
 
 #[tokio::test]
@@ -81,6 +87,145 @@ async fn stops_at_max_turns() -> Result<()> {
     let persisted = harness.persisted_messages().await?;
     let tool_call_turns = persisted.iter().filter(|m| m.is_tool_call()).count();
     assert_eq!(tool_call_turns, 3);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn approve_mode_waits_for_tool_confirmation_before_execution() -> Result<()> {
+    let harness = TestHarness::with_steps([
+        Step::ToolCall {
+            id: "call_1".to_string(),
+            name: "test__echo".to_string(),
+            args: serde_json::json!({ "x": 1 }),
+        },
+        Step::Text("done".to_string()),
+    ])
+    .await
+    .with_default_extension()
+    .await
+    .with_goose_mode(GooseMode::Approve)
+    .await;
+
+    let stream = state_machine::reply(
+        &harness.agent,
+        Message::user().with_text("use the echo tool"),
+        SessionConfig {
+            id: harness.session_id.clone(),
+            schedule_id: None,
+            max_turns: Some(10),
+            retry_config: None,
+        },
+        None,
+    )
+    .await?;
+    tokio::pin!(stream);
+
+    let mut messages = Vec::new();
+    let mut saw_confirmation = false;
+    while let Some(event) = stream.next().await {
+        let event = event?;
+        if let AgentEvent::Message(message) = &event {
+            if message.content.iter().any(|content| {
+                matches!(
+                    content,
+                    MessageContent::ActionRequired(action)
+                        if matches!(
+                            action.data,
+                            ActionRequiredData::ToolConfirmation { ref id, .. } if id == "call_1"
+                        )
+                )
+            }) {
+                saw_confirmation = true;
+                harness
+                    .agent
+                    .handle_confirmation(
+                        "call_1".to_string(),
+                        PermissionConfirmation {
+                            principal_type: PrincipalType::Tool,
+                            permission: Permission::AllowOnce,
+                        },
+                    )
+                    .await;
+            }
+            messages.push(message.clone());
+        }
+    }
+
+    assert!(saw_confirmation, "messages: {messages:#?}");
+    assert_eq!(harness.provider.call_count(), 2);
+    assert!(messages.iter().any(|m| {
+        m.role == Role::User && m.is_tool_response() && tool_response_text(m).contains("\"x\":1")
+    }));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn denied_tool_confirmation_becomes_tool_response() -> Result<()> {
+    let harness = TestHarness::with_steps([
+        Step::ToolCall {
+            id: "call_1".to_string(),
+            name: "test__echo".to_string(),
+            args: serde_json::json!({ "x": 1 }),
+        },
+        Step::Text("done".to_string()),
+    ])
+    .await
+    .with_default_extension()
+    .await
+    .with_goose_mode(GooseMode::Approve)
+    .await;
+
+    let stream = state_machine::reply(
+        &harness.agent,
+        Message::user().with_text("use the echo tool"),
+        SessionConfig {
+            id: harness.session_id.clone(),
+            schedule_id: None,
+            max_turns: Some(10),
+            retry_config: None,
+        },
+        None,
+    )
+    .await?;
+    tokio::pin!(stream);
+
+    let mut messages = Vec::new();
+    while let Some(event) = stream.next().await {
+        let event = event?;
+        if let AgentEvent::Message(message) = &event {
+            if message.content.iter().any(|content| {
+                matches!(
+                    content,
+                    MessageContent::ActionRequired(action)
+                        if matches!(
+                            action.data,
+                            ActionRequiredData::ToolConfirmation { ref id, .. } if id == "call_1"
+                        )
+                )
+            }) {
+                harness
+                    .agent
+                    .handle_confirmation(
+                        "call_1".to_string(),
+                        PermissionConfirmation {
+                            principal_type: PrincipalType::Tool,
+                            permission: Permission::DenyOnce,
+                        },
+                    )
+                    .await;
+            }
+            messages.push(message.clone());
+        }
+    }
+
+    assert_eq!(harness.provider.call_count(), 2);
+    assert!(messages.iter().any(|m| {
+        m.role == Role::User
+            && m.is_tool_response()
+            && tool_response_text(m).contains(DECLINED_RESPONSE)
+    }));
 
     Ok(())
 }
