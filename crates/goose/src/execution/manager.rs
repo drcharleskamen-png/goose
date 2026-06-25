@@ -235,7 +235,9 @@ impl AgentManager {
             }
             extension_results = agent.load_extensions_from_session(&session).await;
             if let Some(ref text) = session.system_prompt {
-                agent.extend_system_prompt("system_prompt".into(), text.clone()).await;
+                agent
+                    .extend_system_prompt("system_prompt".into(), text.clone())
+                    .await;
             }
         }
 

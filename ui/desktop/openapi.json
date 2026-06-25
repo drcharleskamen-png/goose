@@ -7756,6 +7756,10 @@
           "session_type": {
             "$ref": "#/components/schemas/SessionType"
           },
+          "system_prompt": {
+            "type": "string",
+            "nullable": true
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time"

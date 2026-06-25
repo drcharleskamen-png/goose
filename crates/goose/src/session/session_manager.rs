@@ -1339,9 +1339,17 @@ impl SessionStorage {
                 }
             }
             15 => {
-                sqlx::query("ALTER TABLE sessions ADD COLUMN system_prompt TEXT")
-                    .execute(&mut **tx)
-                    .await?;
+                let has_column: bool = sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'system_prompt'",
+                )
+                .fetch_one(&mut **tx)
+                .await?
+                    > 0;
+                if !has_column {
+                    sqlx::query("ALTER TABLE sessions ADD COLUMN system_prompt TEXT")
+                        .execute(&mut **tx)
+                        .await?;
+                }
             }
             _ => {
                 anyhow::bail!("Unknown migration version: {}", version);
