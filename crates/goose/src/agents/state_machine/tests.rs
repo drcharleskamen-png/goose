@@ -163,6 +163,99 @@ async fn provider_error_is_persisted_and_yields() -> Result<()> {
 }
 
 #[tokio::test]
+async fn slash_command_yields_without_calling_provider() -> Result<()> {
+    let provider = Arc::new(ScriptedProvider::from_steps([Step::Text(
+        "should not run".to_string(),
+    )]));
+    let harness = TestHarness::with_provider(provider).await;
+
+    let messages = harness.run("/status", 10).await?;
+
+    assert_eq!(harness.provider.call_count(), 0);
+    assert_eq!(messages.len(), 2, "events: {messages:#?}");
+    assert_eq!(messages[0].role, Role::User);
+    assert_eq!(messages[0].as_concat_text(), "/status");
+    assert_eq!(messages[1].role, Role::Assistant);
+    assert!(
+        messages[1].as_concat_text().contains("Provider:"),
+        "response: {:#?}",
+        messages[1]
+    );
+
+    let persisted = harness.persisted_messages().await?;
+    assert_eq!(persisted.len(), 2);
+    assert!(persisted.iter().all(|m| m.is_user_visible()));
+    assert!(persisted.iter().all(|m| !m.is_agent_visible()));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn goal_slash_command_starts_turn_with_hidden_kickoff() -> Result<()> {
+    let harness = TestHarness::with_steps([Step::Text("working on it".to_string())]).await;
+
+    let messages = harness.run("/goal finish the migration", 10).await?;
+
+    assert_eq!(harness.provider.call_count(), 1);
+    assert_eq!(messages.len(), 3, "events: {messages:#?}");
+    assert_eq!(messages[0].role, Role::User);
+    assert_eq!(messages[1].role, Role::Assistant);
+    assert_eq!(messages[2].as_concat_text(), "working on it");
+
+    let persisted = harness.persisted_messages().await?;
+    assert_eq!(persisted.len(), 4);
+    assert_eq!(persisted[0].as_concat_text(), "/goal finish the migration");
+    assert!(persisted[0].is_user_visible());
+    assert!(!persisted[0].is_agent_visible());
+    assert!(persisted[1].is_user_visible());
+    assert!(!persisted[1].is_agent_visible());
+    assert!(persisted[2]
+        .as_concat_text()
+        .contains("finish the migration"));
+    assert!(!persisted[2].is_user_visible());
+    assert!(persisted[2].is_agent_visible());
+    assert_eq!(persisted[3].as_concat_text(), "working on it");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn history_slash_command_replaces_history_and_yields() -> Result<()> {
+    let provider = Arc::new(ScriptedProvider::from_steps([Step::Text(
+        "should not run".to_string(),
+    )]));
+    let harness = TestHarness::with_provider(provider).await;
+
+    let events = harness.run_events("/clear", 10).await?;
+
+    assert_eq!(harness.provider.call_count(), 0);
+    let replaced = events
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::HistoryReplaced(_)))
+        .count();
+    assert_eq!(replaced, 1, "events: {events:#?}");
+
+    let messages: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            AgentEvent::Message(m) => Some(m),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(messages.len(), 2, "events: {events:#?}");
+    assert_eq!(messages[0].role, Role::User);
+    assert_eq!(messages[0].as_concat_text(), "/clear");
+    assert_eq!(messages[1].role, Role::Assistant);
+
+    let persisted = harness.persisted_messages().await?;
+    assert_eq!(persisted.len(), 2);
+    assert!(persisted.iter().all(|m| m.is_user_visible()));
+    assert!(persisted.iter().all(|m| !m.is_agent_visible()));
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn context_length_error_triggers_compaction_recovery() -> Result<()> {
     use goose_providers::errors::ProviderError;
     use std::sync::atomic::{AtomicUsize, Ordering};

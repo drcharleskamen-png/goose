@@ -12,6 +12,7 @@ use crate::agents::state_machine::ops_compaction::CompactionOperation;
 use crate::agents::state_machine::ops_exit_on_error::ExitOnErrorOperation;
 use crate::agents::state_machine::ops_llm::LlmOperation;
 use crate::agents::state_machine::ops_maxturns::MaxTurnsOperation;
+use crate::agents::state_machine::ops_slash_command::SlashCommandOperation;
 use crate::agents::state_machine::ops_toolcalling::ToolExecutionOperation;
 use crate::agents::types::SessionConfig;
 use crate::agents::{Agent, AgentEvent};
@@ -78,7 +79,8 @@ pub async fn reply(
             .unwrap_or(DEFAULT_MAX_TURNS)
     });
 
-    let operations: Vec<Arc<dyn Operation>> = vec![
+    let operations: Vec<Arc<dyn Operation + '_>> = vec![
+        Arc::new(SlashCommandOperation::new(agent)),
         Arc::new(MaxTurnsOperation::new(max_turns)),
         Arc::new(CompactionOperation::new(
             provider.clone(),
@@ -148,6 +150,24 @@ pub async fn reply(
                             .usage(Usage::default())
                             .apply()
                             .await?;
+                        yield AgentEvent::HistoryReplaced(conversation);
+                    }
+                    TurnEffect::SetMessageVisibility {
+                        message_id,
+                        user_visible,
+                        agent_visible,
+                    } => {
+                        session_manager
+                            .update_message_metadata(&session.id, &message_id, |mut metadata| {
+                                metadata.user_visible = user_visible;
+                                metadata.agent_visible = agent_visible;
+                                metadata
+                            })
+                            .await?;
+                    }
+                    TurnEffect::EmitCurrentHistoryReplaced => {
+                        let updated = session_manager.get_session(&session.id, true).await?;
+                        let conversation = updated.conversation.unwrap_or_default();
                         yield AgentEvent::HistoryReplaced(conversation);
                     }
                     TurnEffect::YieldToClient => {

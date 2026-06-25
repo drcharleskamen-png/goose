@@ -25,6 +25,12 @@ pub type TurnOutcome = Vec<TurnEffect>;
 pub enum TurnEffect {
     AppendMessage(Message),
     ReplaceConversation(Conversation),
+    SetMessageVisibility {
+        message_id: String,
+        user_visible: bool,
+        agent_visible: bool,
+    },
+    EmitCurrentHistoryReplaced,
     YieldToClient,
 }
 

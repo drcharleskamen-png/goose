@@ -41,6 +41,7 @@ state_machine/
 - [x] Machine driver applies ordered `TurnEffect`s
 - [x] Machine clears stale `total_tokens` on `ReplaceConversation` so compaction can't re-trigger
 - [x] Cancellation plumbed through the machine + `Emitter`
+- [x] `SlashCommandOperation` — runs over the persisted tail message and returns ordered effects
 - [ ] More operations (see backlog below)
 - [x] Errors as conversation state — provider errors become tagged, user-visible / agent-invisible messages (replacing the old fire-and-forget notification)
 - [x] `ExitOnErrorOperation` — terminal catch-all; yields when the tail is an unrecovered error
@@ -121,6 +122,12 @@ they exist.
 pub enum TurnEffect {
     AppendMessage(Message),
     ReplaceConversation(Conversation),
+    SetMessageVisibility {
+        message_id: String,
+        user_visible: bool,
+        agent_visible: bool,
+    },
+    EmitCurrentHistoryReplaced,
     YieldToClient,
 }
 
@@ -130,9 +137,9 @@ pub type TurnOutcome = Vec<TurnEffect>;
 The machine applies all effects in order via `SessionManager`. If it sees
 `YieldToClient`, it stops selecting operations after applying the prior effects.
 This lets one op perform a small transaction — for example "mark this message
-invisible, append that response, then yield" once metadata-update effects land
-— without relying on a two-pass op dance. The machine does **not** auto-emit
-events for appended messages; ops already streamed what they wanted visible.
+invisible, append that response, then yield" — without relying on a two-pass
+op dance. The machine does **not** auto-emit events for appended messages; ops
+already streamed what they wanted visible.
 
 ### Machine driver
 
@@ -222,7 +229,7 @@ the error and retry with a new message. This replaces the old fire-and-forget
 | **Retry / goal / grind / final-output** | `handle_retry_logic` + `goal` / `grind` / `final_output` blocks | One op when last assistant message has no tool requests. May append a nudge or `YieldToClient`. |
 | **Subagent sync** | `subagent_handler` + `moim::inject_moim` | When subagents have results to report: append, run another turn. |
 | **Hooks (cross-cutting)** | scattered `hook_manager.emit(...)` and `emit_blocking(...)` calls | Run alongside ops, not in the ordered list. `UserPromptSubmit` on entry, `Stop` before `YieldToClient`. Denial flows back via session state. |
-| **Slash commands** | `execute_command` block in `reply()` | First-turn-only op. May short-circuit with an assistant response and `YieldToClient`. |
+| **Slash commands** | `execute_command` block in `reply()` | Landed as `SlashCommandOperation`. Follow-up: move more command internals out of `Agent`. |
 | **Refresh tools after `manage_extensions`** | `tools_updated` block | Either a tail-step of the Tool execution op or a separate op. |
 
 ---
