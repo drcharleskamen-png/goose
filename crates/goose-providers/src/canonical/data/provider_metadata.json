@@ -173,7 +173,7 @@
     "env": [
       "BERGET_API_KEY"
     ],
-    "model_count": 7
+    "model_count": 8
   },
   {
     "id": "chutes",
@@ -318,7 +318,7 @@
     "env": [
       "EVROC_API_KEY"
     ],
-    "model_count": 13
+    "model_count": 15
   },
   {
     "id": "fastrouter",
@@ -362,7 +362,7 @@
     "env": [
       "FRIENDLI_TOKEN"
     ],
-    "model_count": 6
+    "model_count": 7
   },
   {
     "id": "frogbot",
@@ -439,7 +439,7 @@
     "env": [
       "HF_TOKEN"
     ],
-    "model_count": 46
+    "model_count": 49
   },
   {
     "id": "iflowcn",
@@ -560,7 +560,7 @@
     "env": [
       "LLMGATEWAY_API_KEY"
     ],
-    "model_count": 199
+    "model_count": 183
   },
   {
     "id": "llmtr",
@@ -781,7 +781,7 @@
     "env": [
       "NEURALWATT_API_KEY"
     ],
-    "model_count": 13
+    "model_count": 14
   },
   {
     "id": "nova",
@@ -836,7 +836,7 @@
     "env": [
       "OPENCODE_API_KEY"
     ],
-    "model_count": 70
+    "model_count": 71
   },
   {
     "id": "opencode-go",
@@ -1013,7 +1013,7 @@
     "env": [
       "SILICONFLOW_CN_API_KEY"
     ],
-    "model_count": 74
+    "model_count": 75
   },
   {
     "id": "snowflake-cortex",
@@ -1047,7 +1047,7 @@
     "env": [
       "STEPFUN_API_KEY"
     ],
-    "model_count": 4
+    "model_count": 5
   },
   {
     "id": "stepfun-ai",
@@ -1080,7 +1080,7 @@
     "env": [
       "SYNTHETIC_API_KEY"
     ],
-    "model_count": 34
+    "model_count": 8
   },
   {
     "id": "tencent-coding-plan",
@@ -1179,7 +1179,7 @@
     "env": [
       "WAFER_API_KEY"
     ],
-    "model_count": 7
+    "model_count": 8
   },
   {
     "id": "wandb",
