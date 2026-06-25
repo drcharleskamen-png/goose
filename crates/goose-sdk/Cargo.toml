@@ -19,7 +19,15 @@ required-features = ["uniffi"]
 
 [features]
 default = []
-uniffi = ["dep:uniffi", "dep:thiserror"]
+uniffi = [
+    "dep:uniffi",
+    "dep:thiserror",
+    "dep:anyhow",
+    "dep:goose-providers",
+    "dep:futures",
+    "dep:serde_json",
+    "dep:tokio",
+]
 
 [dependencies]
 goose-sdk-types = { path = "../goose-sdk-types" }
@@ -28,6 +36,11 @@ agent-client-protocol-schema = { workspace = true }
 
 uniffi = { version = "0.31", features = ["cli"], optional = true }
 thiserror = { version = "2", optional = true }
+goose-providers = { version = "1.39.0", path = "../goose-providers", features = ["rustls-tls"], optional = true }
+futures = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync"], optional = true }
+anyhow = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "process", "io-std", "io-util"] }

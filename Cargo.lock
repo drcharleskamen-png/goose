@@ -5142,7 +5142,11 @@ version = "1.40.0"
 dependencies = [
  "agent-client-protocol",
  "agent-client-protocol-schema",
+ "anyhow",
+ "futures",
+ "goose-providers",
  "goose-sdk-types",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
