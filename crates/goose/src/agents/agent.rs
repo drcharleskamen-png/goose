@@ -79,6 +79,18 @@ enum ToolCategory {
     Other,
 }
 
+/// Signed thinking blocks (Anthropic) carry a signature, and redacted thinking
+/// is always signed. These must be replayed exactly as returned, so they are
+/// never duplicated onto split tool-call messages. Unsigned thinking
+/// (Kimi/DeepSeek/Gemini) has no signature and may be echoed.
+fn is_signed_thinking(content: &MessageContent) -> bool {
+    match content {
+        MessageContent::Thinking(t) => !t.signature.is_empty(),
+        MessageContent::RedactedThinking(_) => true,
+        _ => false,
+    }
+}
+
 fn categorize_tool(tool_name: &str) -> ToolCategory {
     let local = tool_name.rsplit("__").next().unwrap_or(tool_name);
     match local {
@@ -2288,6 +2300,19 @@ impl Agent {
                                     direct_thinking
                                 };
 
+                                // Signed thinking (Anthropic) must be replayed exactly as the
+                                // provider returned it. It already lives on the standalone
+                                // thinking message above (or one from an earlier stream chunk),
+                                // so echoing it onto the split tool-call messages would produce
+                                // duplicate signed blocks that Anthropic rejects with a 400.
+                                // Unsigned thinking (Kimi/DeepSeek/Gemini) must still be echoed
+                                // onto tool-call messages, so only those are carried here.
+                                let thinking_to_echo: Vec<MessageContent> = response_thinking
+                                    .iter()
+                                    .filter(|c| !is_signed_thinking(c))
+                                    .cloned()
+                                    .collect();
+
                                 for request in frontend_requests.iter().chain(remaining_requests.iter()) {
                                     if let Err(err) = &request.tool_call {
                                         let err_msg = err.message.to_string();
@@ -2301,7 +2326,7 @@ impl Agent {
                                         let mut request_msg = Message::assistant()
                                             .with_id(format!("msg_{}", Uuid::new_v4()));
 
-                                        for thinking in &response_thinking {
+                                        for thinking in &thinking_to_echo {
                                             request_msg = request_msg.with_content(thinking.clone());
                                         }
 
@@ -3843,6 +3868,22 @@ exit 0
             "discarding must drop steers orphaned by a cancelled run so they cannot leak into a later prompt"
         );
         assert!(agent.drain_pending_steers(session_id).await.is_empty());
+    }
+
+    #[test]
+    fn is_signed_thinking_distinguishes_signed_from_unsigned() {
+        assert!(is_signed_thinking(&MessageContent::thinking(
+            "reasoning",
+            "sig-abc"
+        )));
+        assert!(is_signed_thinking(&MessageContent::redacted_thinking(
+            "redacted-data"
+        )));
+        assert!(!is_signed_thinking(&MessageContent::thinking(
+            "reasoning",
+            ""
+        )));
+        assert!(!is_signed_thinking(&MessageContent::text("hello")));
     }
 
     #[test]
