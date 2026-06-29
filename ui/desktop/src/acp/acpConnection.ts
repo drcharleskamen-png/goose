@@ -53,26 +53,31 @@ async function initializeConnection(): Promise<InitializedAcpClient> {
   const stream = createWebSocketStream(wsUrl);
   const client = new GooseClient(createClientCallbacks(), stream);
 
-  const initializeResponse = await client.initialize({
-    protocolVersion: PROTOCOL_VERSION,
-    clientCapabilities: {
-      elicitation: { form: {} },
-      _meta: {
-        goose: {
-          mcpHostCapabilities: DEFAULT_GOOSE_MCP_HOST_CAPABILITIES,
-          customNotifications: true,
-          recipeParameterRequests: true,
+  try {
+    const initializeResponse = await client.initialize({
+      protocolVersion: PROTOCOL_VERSION,
+      clientCapabilities: {
+        elicitation: { form: {} },
+        _meta: {
+          goose: {
+            mcpHostCapabilities: DEFAULT_GOOSE_MCP_HOST_CAPABILITIES,
+            customNotifications: true,
+            recipeParameterRequests: true,
+          },
         },
       },
-    },
-    clientInfo: {
-      name: packageJson.name,
-      version: packageJson.version,
-    },
-  });
+      clientInfo: {
+        name: packageJson.name,
+        version: packageJson.version,
+      },
+    });
 
-  monitorConnection(client);
-  return { client, initializeResponse };
+    monitorConnection(client);
+    return { client, initializeResponse };
+  } catch (error) {
+    stream.close();
+    throw error;
+  }
 }
 
 export async function getAcpClient(): Promise<GooseClient> {
