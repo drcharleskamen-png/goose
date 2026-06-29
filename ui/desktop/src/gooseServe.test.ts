@@ -6,6 +6,7 @@ import { findGooseBinaryPath } from './gooseServe';
 
 const binaryName = process.platform === 'win32' ? 'goose.exe' : 'goose';
 const tempDirs: string[] = [];
+const originalCwd = process.cwd();
 
 function makeTempDir(): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'goose-serve-test-'));
@@ -23,6 +24,7 @@ function makeFile(filePath: string): string {
 describe('findGooseBinaryPath', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    process.chdir(originalCwd);
 
     while (tempDirs.length > 0) {
       const tempDir = tempDirs.pop();
@@ -50,6 +52,19 @@ describe('findGooseBinaryPath', () => {
     expect(() => findGooseBinaryPath({ isPackaged: true, resourcesPath })).toThrow(
       'GOOSE_BINARY is only supported in development builds'
     );
+  });
+
+  it('prefers the debug target over the staged binary in development builds', () => {
+    const tempDir = makeTempDir();
+    const desktopDir = path.join(tempDir, 'ui', 'desktop');
+    const stagedPath = makeFile(path.join(desktopDir, 'src', 'bin', binaryName));
+    const debugPath = makeFile(path.join(tempDir, 'target', 'debug', binaryName));
+    makeFile(path.join(tempDir, 'target', 'release', binaryName));
+    process.chdir(desktopDir);
+
+    const resolvedPath = findGooseBinaryPath({ isPackaged: false });
+    expect(fs.realpathSync(resolvedPath)).toBe(fs.realpathSync(debugPath));
+    expect(fs.realpathSync(resolvedPath)).not.toBe(fs.realpathSync(stagedPath));
   });
 
   it('uses the bundled goose binary in packaged builds', () => {

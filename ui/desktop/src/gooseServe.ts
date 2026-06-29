@@ -72,13 +72,13 @@ export const findGooseBinaryPath = (options: FindGooseBinaryOptions = {}): strin
   if (isPackaged && resourcesPath) {
     possiblePaths.push(path.join(resourcesPath, 'bin', binaryName));
     possiblePaths.push(path.join(resourcesPath, binaryName));
+  } else {
+    possiblePaths.push(
+      path.join(process.cwd(), '..', '..', 'target', 'debug', binaryName),
+      path.join(process.cwd(), '..', '..', 'target', 'release', binaryName),
+      path.join(process.cwd(), 'src', 'bin', binaryName)
+    );
   }
-
-  possiblePaths.push(
-    path.join(process.cwd(), 'src', 'bin', binaryName),
-    path.join(process.cwd(), '..', '..', 'target', 'release', binaryName),
-    path.join(process.cwd(), '..', '..', 'target', 'debug', binaryName)
-  );
 
   for (const candidate of possiblePaths) {
     if (existingFile(candidate)) {

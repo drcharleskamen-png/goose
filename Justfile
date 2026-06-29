@@ -115,6 +115,16 @@ run-ui-only:
     @echo "Running UI..."
     cd ui/desktop && pnpm install && pnpm run start-gui
 
+run-ui-acp:
+    @echo "Building goose CLI for direct ACP..."
+    cargo build -p goose-cli --bin goose
+    @echo "Running UI with direct ACP backend..."
+    cd ui/desktop && pnpm install && pnpm run start-gui:acp
+
+run-ui-acp-only:
+    @echo "Running UI with direct ACP backend..."
+    cd ui/desktop && pnpm install && pnpm run start-gui:acp
+
 debug-ui:
     @echo "🚀 Starting goose frontend in external backend mode"
     cd ui/desktop && \
