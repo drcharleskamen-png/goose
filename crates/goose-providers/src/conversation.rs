@@ -499,10 +499,8 @@ pub fn merge_consecutive_messages(messages: Vec<Message>) -> (Vec<Message>, Vec<
     (merged_messages, issues)
 }
 
-/// Signed thinking blocks (Anthropic) carry a signature, and redacted thinking
-/// is always signed. These must be replayed exactly as the provider returned
-/// them. Unsigned thinking (reasoning summaries from other providers) has no
-/// signature.
+/// Signed thinking carries a signature; redacted thinking is always signed.
+/// Signed blocks must be replayed exactly; unsigned reasoning summaries need not.
 fn is_signed_thinking(content: &MessageContent) -> bool {
     match content {
         MessageContent::Thinking(t) => !t.signature.is_empty(),
@@ -511,15 +509,10 @@ fn is_signed_thinking(content: &MessageContent) -> bool {
     }
 }
 
-/// Removes duplicate signed `thinking` / `redacted_thinking` blocks within a
-/// single assistant message.
-///
-/// Anthropic requires signed thinking blocks to be replayed exactly as they were
-/// originally returned. Some persisted sessions contain the same signed thinking
-/// block twice in one assistant turn (e.g. a standalone thinking message that was
-/// later merged with a tool-call message that re-embedded the same thinking).
-/// Sending two identical signed blocks makes Anthropic reject the turn with a 400.
-/// We keep the first occurrence and drop subsequent identical copies.
+/// Drops duplicate signed thinking blocks within one assistant message, keeping
+/// the first. Some signed-replay APIs (like Anthropic) reject a turn that
+/// repeats the same signed block, which can happen when a standalone thinking
+/// message is merged with a tool-call message that re-embedded that thinking.
 fn dedupe_signed_thinking(messages: Vec<Message>) -> (Vec<Message>, Vec<String>) {
     let mut issues = Vec::new();
 
@@ -534,10 +527,8 @@ fn dedupe_signed_thinking(messages: Vec<Message>) -> (Vec<Message>, Vec<String>)
             let original_len = message.content.len();
             let mut deduped: Vec<MessageContent> = Vec::with_capacity(original_len);
             for content in &message.content {
-                // Only signed thinking must be replayed exactly, so only it can
-                // trigger an Anthropic 400 when duplicated. Unsigned thinking
-                // (reasoning summaries from other providers) may legitimately
-                // repeat and is left untouched.
+                // Only signed blocks are deduped; unsigned reasoning summaries
+                // may legitimately repeat, so they are left untouched.
                 let is_signed = is_signed_thinking(content);
                 if is_signed && seen.contains(&content) {
                     continue;
