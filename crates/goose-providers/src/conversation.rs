@@ -499,6 +499,18 @@ pub fn merge_consecutive_messages(messages: Vec<Message>) -> (Vec<Message>, Vec<
     (merged_messages, issues)
 }
 
+/// Signed thinking blocks (Anthropic) carry a signature, and redacted thinking
+/// is always signed. These must be replayed exactly as the provider returned
+/// them. Unsigned thinking (reasoning summaries from other providers) has no
+/// signature.
+fn is_signed_thinking(content: &MessageContent) -> bool {
+    match content {
+        MessageContent::Thinking(t) => !t.signature.is_empty(),
+        MessageContent::RedactedThinking(_) => true,
+        _ => false,
+    }
+}
+
 /// Removes duplicate signed `thinking` / `redacted_thinking` blocks within a
 /// single assistant message.
 ///
@@ -522,14 +534,15 @@ fn dedupe_signed_thinking(messages: Vec<Message>) -> (Vec<Message>, Vec<String>)
             let original_len = message.content.len();
             let mut deduped: Vec<MessageContent> = Vec::with_capacity(original_len);
             for content in &message.content {
-                let is_thinking = matches!(
-                    content,
-                    MessageContent::Thinking(_) | MessageContent::RedactedThinking(_)
-                );
-                if is_thinking && seen.contains(&content) {
+                // Only signed thinking must be replayed exactly, so only it can
+                // trigger an Anthropic 400 when duplicated. Unsigned thinking
+                // (reasoning summaries from other providers) may legitimately
+                // repeat and is left untouched.
+                let is_signed = is_signed_thinking(content);
+                if is_signed && seen.contains(&content) {
                     continue;
                 }
-                if is_thinking {
+                if is_signed {
                     seen.push(content);
                 }
                 deduped.push(content.clone());
@@ -1448,6 +1461,43 @@ mod tests {
             })
             .count();
         assert_eq!(thinking_count, 2, "distinct thinking blocks must be kept");
+    }
+
+    #[test]
+    fn test_keeps_duplicate_unsigned_thinking_blocks() {
+        use crate::conversation::message::MessageContent;
+
+        // Unsigned thinking (reasoning summaries from non-Anthropic providers)
+        // can legitimately repeat and must not be dropped, since only signed
+        // blocks trigger the Anthropic exact-replay 400.
+        let messages = vec![
+            Message::user().with_text("Do the thing"),
+            Message::assistant()
+                .with_thinking("same reasoning", "")
+                .with_thinking("same reasoning", ""),
+            Message::user().with_text("Now continue"),
+        ];
+
+        let (fixed, issues) = fix_conversation(Conversation::new_unvalidated(messages));
+
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i == "Removed duplicate signed thinking block"),
+            "unsigned thinking must not be deduped, got: {:?}",
+            issues
+        );
+
+        let fixed_messages = fixed.messages();
+        let thinking_count = fixed_messages
+            .iter()
+            .flat_map(|m| m.content.iter())
+            .filter(|c| matches!(c, MessageContent::Thinking(_)))
+            .count();
+        assert_eq!(
+            thinking_count, 2,
+            "duplicate unsigned thinking blocks must be kept"
+        );
     }
 
     #[test]
