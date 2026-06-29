@@ -31,7 +31,7 @@ use crate::config::extensions::name_to_key;
 use crate::config::permission::PermissionManager;
 use crate::config::{get_enabled_extensions, Config, GooseMode};
 use crate::context_mgmt::{
-    check_if_compaction_needed, compact_messages, DEFAULT_COMPACTION_THRESHOLD,
+    check_if_compaction_needed, compact_messages, CompactionMode, DEFAULT_COMPACTION_THRESHOLD,
 };
 use crate::conversation::message::{
     ActionRequiredData, InferenceMetadata, Message, MessageContent, ProviderMetadata,
@@ -1742,13 +1742,23 @@ impl Agent {
                     )
                 );
 
-                let compact_model_config = self.model_config_for_session(&session_config.id).await?;
+                let (compact_tools, _, mut compact_system_prompt, compact_model_config) = self
+                    .prepare_tools_and_prompt(&session_config.id, session.working_dir.as_path())
+                    .await?;
+                // Include project instructions so the budget matches the prompt reply_internal sends.
+                if let Some(project_addendum) = self.load_project_instructions(&session).await {
+                    compact_system_prompt =
+                        format!("{compact_system_prompt}\n\n{project_addendum}");
+                }
                 match compact_messages(
                     self.provider().await?.as_ref(),
                     &compact_model_config,
                     &session_config.id,
                     &conversation_to_compact,
-                    false,
+                    CompactionMode::Auto {
+                        system_prompt: &compact_system_prompt,
+                        tools: &compact_tools,
+                    },
                 )
                 .await
                 {
@@ -2403,7 +2413,10 @@ impl Agent {
                                 &model_config,
                                 &session_config.id,
                                 &conversation,
-                                false,
+                                CompactionMode::Auto {
+                                    system_prompt: &system_prompt,
+                                    tools: &tools,
+                                },
                             )
                             .await
                             {

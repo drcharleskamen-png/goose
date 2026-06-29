@@ -11,7 +11,7 @@ use goose_providers::conversation::token_usage::ProviderUsage;
 use goose_providers::errors::ProviderError;
 use goose_providers::model::ModelConfig;
 use indoc::indoc;
-use rmcp::model::Role;
+use rmcp::model::{Role, Tool};
 use serde::Serialize;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -21,6 +21,17 @@ use tracing::log::warn;
 pub const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.8;
 
 const TOOLCALL_SUMMARIZATION_BATCH_SIZE: usize = 10;
+
+fn compaction_threshold() -> f64 {
+    let threshold = Config::global()
+        .get_param::<f64>("GOOSE_AUTO_COMPACT_THRESHOLD")
+        .unwrap_or(DEFAULT_COMPACTION_THRESHOLD);
+    if threshold > 0.0 && threshold < 1.0 {
+        threshold
+    } else {
+        DEFAULT_COMPACTION_THRESHOLD
+    }
+}
 
 fn tool_pair_summarization_enabled() -> bool {
     Config::global()
@@ -48,17 +59,21 @@ struct SummarizeContext {
     messages: String,
 }
 
+/// `Auto` carries the system prompt and tools so the re-appended user message can
+/// be sized against the real prompt overhead; `Manual` preserves no message.
+pub enum CompactionMode<'a> {
+    Auto {
+        system_prompt: &'a str,
+        tools: &'a [Tool],
+    },
+    Manual,
+}
+
 /// Compact messages by summarizing them
 ///
 /// This function performs the actual compaction by summarizing messages and updating
 /// their visibility metadata. It does not check thresholds - use `check_if_compaction_needed`
 /// first to determine if compaction is necessary.
-///
-/// # Arguments
-/// * `provider` - The provider to use for summarization
-/// * `session_id` - The session to use for summarization
-/// * `conversation` - The current conversation history
-/// * `manual_compact` - If true, this is a manual compaction (don't preserve user message)
 ///
 /// # Returns
 /// * A tuple containing:
@@ -69,10 +84,11 @@ pub async fn compact_messages(
     model_config: &ModelConfig,
     session_id: &str,
     conversation: &Conversation,
-    manual_compact: bool,
+    mode: CompactionMode<'_>,
 ) -> Result<(Conversation, ProviderUsage)> {
     info!("Performing message compaction");
 
+    let manual_compact = matches!(mode, CompactionMode::Manual);
     let messages = conversation.messages();
 
     let has_text_only = |msg: &Message| {
@@ -172,8 +188,46 @@ pub async fn compact_messages(
     let (merged_continuation, _issues) = merge_consecutive_messages(continuation_messages);
     final_messages.extend(merged_continuation);
 
-    if let Some(user_msg) = preserved_user_message {
+    // Without a bound, a large preserved message pins the compacted prompt at the
+    // threshold and the agent recompacts every turn. Reserve room for the next turn
+    // (the reply, plus per-turn additions like the turn-context block goose prepends
+    // to the latest user message); the summary keeps the full text.
+    if let (
+        Some(user_msg),
+        CompactionMode::Auto {
+            system_prompt,
+            tools,
+        },
+    ) = (preserved_user_message, mode)
+    {
         if let Some(text) = extract_text(&user_msg) {
+            let context_limit = provider
+                .get_context_limit(model_config)
+                .await
+                .unwrap_or_else(|_| model_config.context_limit());
+            let threshold = compaction_threshold();
+            let target = (context_limit as f64 * threshold) as usize;
+            let threshold_gap = (context_limit as f64 * (1.0 - threshold)) as usize;
+            let max_output = model_config.max_output_tokens().max(0) as usize;
+            let reserve = threshold_gap + max_output;
+
+            let text = match create_token_counter().await {
+                Ok(counter) => {
+                    let mut accounted: Vec<Message> = final_messages
+                        .iter()
+                        .filter(|m| m.is_agent_visible())
+                        .cloned()
+                        .collect();
+                    accounted.push(Message::user().with_text(""));
+                    let used = counter.count_chat_tokens(system_prompt, &accounted, tools);
+
+                    // Floor at 1: an empty user message is dropped by conversation
+                    // validation, leaving the conversation on an assistant tail.
+                    let budget = target.saturating_sub(used + reserve).max(1);
+                    counter.truncate_to_token_budget_middle_out(&text, budget)
+                }
+                Err(_) => text,
+            };
             final_messages.push(Message::user().with_text(&text));
         }
     }
@@ -724,7 +778,10 @@ mod tests {
             &model_config,
             "test-session-id",
             &conversation,
-            false,
+            CompactionMode::Auto {
+                system_prompt: "",
+                tools: &[],
+            },
         )
         .await
         .unwrap();
@@ -763,7 +820,10 @@ mod tests {
             &model_config,
             "test-session-id",
             &conversation,
-            false,
+            CompactionMode::Auto {
+                system_prompt: "",
+                tools: &[],
+            },
         )
         .await;
 
@@ -771,6 +831,155 @@ mod tests {
             result.is_ok(),
             "Should succeed with progressive removal: {:?}",
             result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_compaction_does_not_thrash_on_large_user_message() {
+        let counter = create_token_counter().await.unwrap();
+
+        // Real prompt overhead the bound must account for.
+        let system_prompt = "You are a careful software engineering agent. ".repeat(80);
+        let tools = vec![Tool::new(
+            "read_file".to_string(),
+            "Read the contents of a file from disk.".to_string(),
+            serde_json::Map::new(),
+        )];
+
+        // Stays the most-recent text-only user message because later turns are all
+        // tool calls/responses - a long task prompt or big paste mid-agentic-loop.
+        let large_text =
+            "Investigate the failing build and summarize the root cause. ".repeat(4000);
+
+        const CONTEXT_LIMIT: usize = 40_000;
+        let provider = MockProvider::new(
+            Message::assistant().with_text("<mock summary>"),
+            CONTEXT_LIMIT,
+        );
+        let model_config = provider.config.clone();
+
+        let threshold = compaction_threshold();
+        let target = (CONTEXT_LIMIT as f64 * threshold) as usize;
+        let reserve = ((CONTEXT_LIMIT as f64 * (1.0 - threshold)) as usize)
+            + (model_config.max_output_tokens().max(0) as usize);
+
+        let large_user_tokens =
+            counter.count_chat_tokens("", &[Message::user().with_text(&large_text)], &[]);
+        assert!(
+            large_user_tokens > target,
+            "test setup: the large user message ({large_user_tokens}) must exceed the \
+             auto-compact target ({target}) to exercise the thrash path"
+        );
+
+        let mut messages = vec![Message::user().with_text(&large_text)];
+        messages.extend(create_tool_pair(
+            "call0",
+            "resp0",
+            "read_file",
+            "build log line",
+        ));
+        messages.extend(create_tool_pair(
+            "call1",
+            "resp1",
+            "read_file",
+            "another log line",
+        ));
+
+        let conversation = Conversation::new_unvalidated(messages);
+
+        let before = counter.count_chat_tokens(&system_prompt, conversation.messages(), &tools);
+
+        let (compacted, _usage) = compact_messages(
+            &provider,
+            &model_config,
+            "test-session-id",
+            &conversation,
+            CompactionMode::Auto {
+                system_prompt: &system_prompt,
+                tools: &tools,
+            },
+        )
+        .await
+        .unwrap();
+
+        let after = counter.count_chat_tokens(&system_prompt, compacted.messages(), &tools);
+
+        println!(
+            "compaction thrash repro: context_limit={CONTEXT_LIMIT}, target={target}, \
+             reserve={reserve}, full prompt tokens before={before}, after={after}"
+        );
+
+        // Must stay at least `reserve` below the threshold; sitting exactly at it
+        // would let the next turn's growth re-trigger compaction (thrash).
+        assert!(
+            after + reserve <= target,
+            "post-compaction prompt ({after}) must leave at least the reserve ({reserve}) \
+             below the auto-compaction target ({target}); otherwise the next turn re-triggers \
+             compaction and the agent thrashes"
+        );
+        assert!(
+            after < before,
+            "compaction must actually reduce the prompt (before={before}, after={after})"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_compaction_reserves_room_for_large_model_output() {
+        // Max output (16k) exceeds the threshold gap (8k), so the reserve must
+        // cover the output for a full reply to fit next turn.
+        let counter = create_token_counter().await.unwrap();
+        let system_prompt = "You are a careful software engineering agent. ".repeat(80);
+        let tools: Vec<Tool> = vec![];
+
+        const CONTEXT_LIMIT: usize = 40_000;
+        const MAX_OUTPUT: i32 = 16_000;
+
+        let mut provider = MockProvider::new(
+            Message::assistant().with_text("<mock summary>"),
+            CONTEXT_LIMIT,
+        );
+        provider.config.max_tokens = Some(MAX_OUTPUT);
+        let model_config = provider.config.clone();
+
+        let threshold = compaction_threshold();
+        let target = (CONTEXT_LIMIT as f64 * threshold) as usize;
+        let max_output = model_config.max_output_tokens().max(0) as usize;
+        assert!(
+            max_output > (CONTEXT_LIMIT as f64 * (1.0 - threshold)) as usize,
+            "test setup: max output must exceed the threshold gap"
+        );
+
+        let large_text = "Refactor the module and explain each step. ".repeat(4000);
+        let conversation =
+            Conversation::new_unvalidated(vec![Message::user().with_text(&large_text)]);
+
+        let (compacted, _usage) = compact_messages(
+            &provider,
+            &model_config,
+            "test-session-id",
+            &conversation,
+            CompactionMode::Auto {
+                system_prompt: &system_prompt,
+                tools: &tools,
+            },
+        )
+        .await
+        .unwrap();
+
+        let after = counter.count_chat_tokens(&system_prompt, compacted.messages(), &tools);
+
+        // reply_internal prepends a turn-context block to the latest user message;
+        // oversize it here to keep the assertion conservative.
+        let turn_context = "<turn-context>\ncurrent time, working dir, compaction status, \
+             turn budget, extension-provided context\n</turn-context>\n"
+            .repeat(8);
+        let moim_tokens = counter.count_tokens(&turn_context);
+
+        // Prompt + turn-context + a full reply must stay under the target.
+        assert!(
+            after + moim_tokens + max_output <= target,
+            "post-compaction prompt ({after}) + turn-context ({moim_tokens}) + max reply \
+             ({max_output}) must stay at or below the target ({target})"
         );
     }
 

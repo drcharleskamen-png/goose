@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{anyhow, Result};
 
-use crate::context_mgmt::compact_messages;
+use crate::context_mgmt::{compact_messages, CompactionMode};
 use crate::conversation::message::Message;
 use crate::slash_commands::{recipe_slash_command, skill_slash_command};
 
@@ -162,7 +162,7 @@ impl Agent {
             &model_config,
             session_id,
             &conversation,
-            true, // is_manual_compact
+            CompactionMode::Manual,
         )
         .await?;
 

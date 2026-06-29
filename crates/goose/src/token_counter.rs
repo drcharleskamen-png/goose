@@ -187,6 +187,57 @@ impl TokenCounter {
         num_tokens
     }
 
+    pub fn truncate_to_token_budget_middle_out(&self, text: &str, max_tokens: usize) -> String {
+        let tokens = self.tokenizer.encode_with_special_tokens(text);
+        if tokens.len() <= max_tokens {
+            return text.to_string();
+        }
+        if max_tokens == 0 {
+            return String::new();
+        }
+
+        const MARKER: &str = "\n\n[... content truncated to fit context budget ...]\n\n";
+        let marker_tokens = self.tokenizer.encode_with_special_tokens(MARKER).len();
+
+        let candidate = if max_tokens > marker_tokens {
+            let keep = max_tokens - marker_tokens;
+            let head_len = keep / 2;
+            let tail_len = keep - head_len;
+            let head = self.decode_lossy(&tokens[..head_len]);
+            let tail = self.decode_lossy(&tokens[tokens.len() - tail_len..]);
+            format!("{head}{MARKER}{tail}")
+        } else {
+            // No room for the marker; keep what fits from the head.
+            self.decode_lossy(&tokens[..max_tokens])
+        };
+
+        // Rejoining decoded slices can drift the token count at the seams, so verify
+        // and fall back to the largest head prefix that fits.
+        if self.count_tokens(&candidate) <= max_tokens {
+            candidate
+        } else {
+            self.decode_prefix_within_budget(&tokens, max_tokens)
+        }
+    }
+
+    fn decode_lossy(&self, tokens: &[u32]) -> String {
+        self.tokenizer
+            .decode_bytes(tokens)
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+            .unwrap_or_default()
+    }
+
+    fn decode_prefix_within_budget(&self, tokens: &[u32], max_tokens: usize) -> String {
+        let mut n = max_tokens.min(tokens.len());
+        loop {
+            let candidate = self.decode_lossy(&tokens[..n]);
+            if n == 0 || self.count_tokens(&candidate) <= max_tokens {
+                return candidate;
+            }
+            n -= 1;
+        }
+    }
+
     pub fn clear_cache(&self) {
         self.token_cache
             .lock()

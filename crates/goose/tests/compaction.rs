@@ -14,7 +14,7 @@ use goose_providers::conversation::token_usage::{ProviderUsage, Usage};
 use goose_providers::errors::ProviderError;
 use goose_providers::model::ModelConfig;
 use rmcp::model::Tool;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -747,6 +747,200 @@ async fn test_context_limit_recovery_compaction() -> Result<()> {
         .conversation
         .expect("Session should have conversation");
     assert_conversation_compacted(&updated_conversation);
+
+    Ok(())
+}
+
+/// Provider whose reported input usage tracks the actual agent-visible prompt
+/// size, so the re-appended user message's size flows back into the next
+/// auto-compaction check - exactly the loop the thrash bug exploits.
+struct ThrashProbeProvider {
+    context_limit: usize,
+    compaction_calls: Arc<AtomicUsize>,
+}
+
+impl ThrashProbeProvider {
+    fn new(context_limit: usize) -> Self {
+        Self {
+            context_limit,
+            compaction_calls: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
+#[async_trait]
+impl Provider for ThrashProbeProvider {
+    async fn stream(
+        &self,
+        _model_config: &ModelConfig,
+        system_prompt: &str,
+        messages: &[Message],
+        _tools: &[Tool],
+    ) -> Result<MessageStream, ProviderError> {
+        // Match the exact do_compact request, not the session-naming or
+        // tool-summary calls that also mention "summarize".
+        let is_compaction = messages.iter().any(|msg| {
+            msg.content.iter().any(|c| {
+                matches!(c, MessageContent::Text(t)
+                    if t.text.to_lowercase().contains("summarize the conversation history"))
+            })
+        });
+
+        if is_compaction {
+            self.compaction_calls.fetch_add(1, Ordering::SeqCst);
+            // Summary is small; its output becomes the post-compaction context.
+            let usage = ProviderUsage::new(
+                "mock-model".to_string(),
+                Usage::new(Some(500), Some(200), Some(700)),
+            );
+            return Ok(stream_from_single_message(
+                Message::assistant().with_text("<mock summary of conversation>"),
+                usage,
+            ));
+        }
+
+        // Regular call: input reflects the real agent-visible prompt (system +
+        // every message body), so a large re-appended message keeps usage high.
+        let system_tokens = if system_prompt.is_empty() { 0 } else { 6000 };
+        let message_tokens: i32 = messages
+            .iter()
+            .flat_map(|msg| &msg.content)
+            .map(|c| match c {
+                MessageContent::Text(t) => (t.text.len() / 4) as i32,
+                _ => 0,
+            })
+            .sum();
+        let input = system_tokens + message_tokens;
+        let output = 50;
+        let usage = ProviderUsage::new(
+            "mock-model".to_string(),
+            Usage::new(Some(input), Some(output), Some(input + output)),
+        );
+        Ok(stream_from_single_message(
+            Message::assistant().with_text("Done."),
+            usage,
+        ))
+    }
+
+    fn get_name(&self) -> &str {
+        "thrash-probe"
+    }
+
+    async fn get_context_limit(&self, _model_config: &ModelConfig) -> Result<usize, ProviderError> {
+        Ok(self.context_limit)
+    }
+}
+
+/// End-to-end repro of the compaction-thrash bug, driving the real `agent.reply`
+/// loop. A large most-recent user message is re-appended after compaction; the
+/// fix bounds it so post-compaction usage drops below the threshold and the next
+/// turn does not re-compact. Without the fix, usage stays pinned at/above the
+/// threshold and every turn recompacts.
+#[tokio::test]
+async fn test_large_user_message_does_not_thrash_compaction() -> Result<()> {
+    const CONTEXT_LIMIT: usize = 40_000;
+    let threshold_tokens = (CONTEXT_LIMIT as f64 * 0.8) as i32; // 32_000
+
+    let temp_dir = TempDir::new()?;
+    let agent = Agent::new();
+
+    let session = setup_test_session(
+        &agent,
+        &temp_dir,
+        "thrash-repro",
+        vec![
+            Message::user().with_text("Start the task."),
+            Message::assistant().with_text("Working on it."),
+        ],
+    )
+    .await?;
+
+    let provider = Arc::new(ThrashProbeProvider::new(CONTEXT_LIMIT));
+    let compaction_calls = provider.compaction_calls.clone();
+    agent
+        .update_provider(
+            provider,
+            ModelConfig::new("mock-model").with_context_limit(Some(CONTEXT_LIMIT)),
+            &session.id,
+        )
+        .await?;
+
+    // Seed usage above the threshold so the first reply auto-compacts.
+    agent
+        .config
+        .session_manager
+        .update(&session.id)
+        .usage(Usage::new(Some(38_000), Some(0), Some(38_000)))
+        .apply()
+        .await?;
+
+    let session_config = SessionConfig {
+        id: session.id.clone(),
+        schedule_id: None,
+        max_turns: None,
+        retry_config: None,
+    };
+
+    // A large most-recent user message - a long task prompt or big paste.
+    let large_message = Message::user().with_text("Analyze this log. ".repeat(40_000));
+
+    let stream = agent
+        .reply(large_message, session_config.clone(), None)
+        .await?;
+    tokio::pin!(stream);
+    let mut turn1_compacted = false;
+    while let Some(event) = stream.next().await {
+        if let Ok(AgentEvent::HistoryReplaced(_)) = event {
+            turn1_compacted = true;
+        }
+    }
+
+    assert!(
+        turn1_compacted,
+        "first reply should auto-compact (seeded usage 38k > 32k threshold)"
+    );
+
+    let after_turn1 = agent
+        .config
+        .session_manager
+        .get_session(&session.id, true)
+        .await?
+        .usage
+        .total_tokens
+        .expect("usage recorded");
+
+    // The thrash signature: post-compaction usage stays at/above the threshold.
+    // The fix bounds the re-appended message so it lands below, leaving headroom.
+    assert!(
+        after_turn1 < threshold_tokens,
+        "post-compaction usage ({after_turn1}) must drop below the threshold \
+         ({threshold_tokens}); otherwise the next turn re-compacts and the agent thrashes"
+    );
+
+    let compactions_after_turn1 = compaction_calls.load(Ordering::SeqCst);
+
+    // Second turn: a small follow-up must NOT trigger another compaction, since
+    // usage is now below the threshold.
+    let stream = agent
+        .reply(Message::user().with_text("Continue."), session_config, None)
+        .await?;
+    tokio::pin!(stream);
+    let mut turn2_compacted = false;
+    while let Some(event) = stream.next().await {
+        if let Ok(AgentEvent::HistoryReplaced(_)) = event {
+            turn2_compacted = true;
+        }
+    }
+
+    assert!(
+        !turn2_compacted,
+        "follow-up turn must not re-compact once usage is below the threshold"
+    );
+    assert_eq!(
+        compaction_calls.load(Ordering::SeqCst),
+        compactions_after_turn1,
+        "no additional summarization LLM call should fire on the follow-up turn"
+    );
 
     Ok(())
 }
