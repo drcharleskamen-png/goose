@@ -28,7 +28,7 @@ import 'dotenv/config';
 import { checkServerStatus } from './goosed';
 import { startGoosed } from './goosed';
 import { startGooseServe } from './gooseServe';
-import { GooseServeLeaseRegistry, type GooseServeLease } from './gooseServeLease';
+import { GooseServeLeaseRegistry, type GooseServeLease } from './gooseServeLeaseRegistry';
 import { createClient, createConfig } from './api/client';
 import { expandTilde } from './utils/pathUtils';
 import log from './utils/logger';

@@ -11,7 +11,6 @@ export interface GooseServeLease {
   exited: boolean;
   exitCode: number | null;
   exitSignal: NodeJS.Signals | null;
-  exitError?: string;
 }
 
 export class GooseServeLeaseRegistry {
@@ -20,25 +19,24 @@ export class GooseServeLeaseRegistry {
   constructor(private readonly logger: Logger) {}
 
   create(result: GooseServeResult): GooseServeLease {
-    const exitDetails = result.getExitDetails();
     const lease: GooseServeLease = {
       acpUrl: result.acpUrl,
       cleanup: result.cleanup,
       windowIds: new Set<number>(),
       cleanedUp: false,
-      exited: result.hasExited(),
-      exitCode: exitDetails.code,
-      exitSignal: exitDetails.signal,
+      exited: false,
+      exitCode: null,
+      exitSignal: null,
     };
 
     const markExited = ({
       code,
       signal,
-      error,
+      logUnexpected,
     }: {
       code?: number | null;
       signal?: NodeJS.Signals | null;
-      error?: Error;
+      logUnexpected: boolean;
     }) => {
       const firstExit = !lease.exited;
       lease.exited = true;
@@ -48,27 +46,24 @@ export class GooseServeLeaseRegistry {
       if (signal !== undefined) {
         lease.exitSignal = signal;
       }
-      if (error) {
-        lease.exitError = error.message;
-      }
 
-      if (firstExit && !lease.cleanedUp) {
+      if (logUnexpected && firstExit && !lease.cleanedUp) {
         this.logger.error('Goose ACP server exited unexpectedly', {
           code: lease.exitCode,
           signal: lease.exitSignal,
-          error: lease.exitError,
           windowIds: [...lease.windowIds],
         });
       }
     };
 
     result.process.once('exit', (code, signal) => {
-      markExited({ code, signal });
+      markExited({ code, signal, logUnexpected: true });
     });
 
-    result.process.once('error', (error) => {
-      markExited({ error });
-    });
+    if (result.hasExited()) {
+      const exitDetails = result.getExitDetails();
+      markExited({ code: exitDetails.code, signal: exitDetails.signal, logUnexpected: false });
+    }
 
     return lease;
   }
