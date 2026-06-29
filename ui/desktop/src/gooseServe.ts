@@ -297,6 +297,7 @@ export const startGooseServe = async ({
   const acpUrl = buildAcpUrl(port, secretKey);
   const redactedAcpUrl = buildRedactedAcpUrl(port);
   const errorLog: string[] = [];
+  const args = ['serve', '--platform', 'desktop', '--host', '127.0.0.1', '--port', String(port)];
 
   logger.info(`Starting goose serve from: ${goosePath} on port ${port} in dir ${workingDir}`);
   if (startupTrace) {
@@ -310,11 +311,11 @@ export const startGooseServe = async ({
       binaryPath: goosePath,
       port,
       workingDir,
-      args: ['serve', '--host', '127.0.0.1', '--port', String(port)],
+      args,
     });
   }
 
-  const gooseProcess = spawn(goosePath, ['serve', '--host', '127.0.0.1', '--port', String(port)], {
+  const gooseProcess = spawn(goosePath, args, {
     env: buildGooseServeEnv(secretKey, goosePath, additionalEnv),
     cwd: workingDir,
     windowsHide: true,

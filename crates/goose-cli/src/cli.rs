@@ -51,6 +51,22 @@ fn generate_serve_secret_key() -> String {
     )
 }
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum ServePlatform {
+    #[default]
+    Cli,
+    Desktop,
+}
+
+impl From<ServePlatform> for GoosePlatform {
+    fn from(platform: ServePlatform) -> Self {
+        match platform {
+            ServePlatform::Cli => GoosePlatform::GooseCli,
+            ServePlatform::Desktop => GoosePlatform::GooseDesktop,
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "goose", author, version, display_name = "", about, long_about = None)]
 pub struct Cli {
@@ -831,6 +847,9 @@ enum Command {
         #[arg(long, default_value = "3284")]
         port: u16,
 
+        #[arg(long, value_enum, default_value_t = ServePlatform::Cli)]
+        platform: ServePlatform,
+
         #[arg(
             long = "with-builtin",
             value_name = "NAME",
@@ -1324,7 +1343,12 @@ async fn handle_mcp_command(server: McpCommand) -> Result<()> {
     Ok(())
 }
 
-async fn handle_serve_command(host: String, port: u16, builtins: Vec<String>) -> Result<()> {
+async fn handle_serve_command(
+    host: String,
+    port: u16,
+    builtins: Vec<String>,
+    platform: ServePlatform,
+) -> Result<()> {
     use goose::acp::server_factory::{AcpServer, AcpServerFactoryConfig};
     use goose::acp::transport::create_router;
     use goose::config::paths::Paths;
@@ -1354,7 +1378,7 @@ async fn handle_serve_command(host: String, port: u16, builtins: Vec<String>) ->
         builtins,
         data_dir: Paths::data_dir(),
         config_dir: Paths::config_dir(),
-        goose_platform: GoosePlatform::GooseCli,
+        goose_platform: platform.into(),
         additional_source_roots,
         scheduler: None,
     }));
@@ -2071,7 +2095,8 @@ pub async fn cli() -> anyhow::Result<()> {
             host,
             port,
             builtins,
-        }) => handle_serve_command(host, port, builtins).await,
+            platform,
+        }) => handle_serve_command(host, port, builtins, platform).await,
         Some(Command::Session {
             command: Some(cmd), ..
         }) => handle_session_subcommand(cmd).await,
