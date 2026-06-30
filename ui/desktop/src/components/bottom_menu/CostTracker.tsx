@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { PiggyBank } from 'lucide-react';
 import { CoinIcon } from '../icons';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/Tooltip';
 import { fetchCanonicalModelInfo } from '../../utils/canonical';
@@ -22,12 +23,17 @@ const i18n = defineMessages({
     id: 'costTracker.inputOutputTooltip',
     defaultMessage: 'Input: {inputTokens} tokens ({inputCost}) | Output: {outputTokens} tokens ({outputCost})',
   },
+  savings: {
+    id: 'costTracker.savings',
+    defaultMessage: 'Saved {savings} so far with cost savings mode',
+  },
 });
 
 interface CostTrackerProps {
   inputTokens?: number;
   outputTokens?: number;
   accumulatedCost?: number | null;
+  accumulatedSavings?: number | null;
   model: string | null;
   provider: string | null;
 }
@@ -36,6 +42,7 @@ export function CostTracker({
   inputTokens = 0,
   outputTokens = 0,
   accumulatedCost,
+  accumulatedSavings,
   model: currentModel,
   provider: currentProvider,
 }: CostTrackerProps) {
@@ -186,15 +193,36 @@ export function CostTracker({
     });
   };
 
+  const currency = costInfo?.currency || '$';
+  const hasSavings = accumulatedSavings != null && accumulatedSavings > 0;
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="flex items-center justify-center h-full transition-colors cursor-default translate-y-[1px] text-text-primary/70 hover:text-text-primary">
-          <CoinIcon className="mr-1" size={16} />
-          <span className="text-xs font-mono">{formatCost(totalCost)}</span>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent>{getTooltipContent()}</TooltipContent>
-    </Tooltip>
+    <div className="flex items-center h-full gap-2">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center justify-center h-full transition-colors cursor-default translate-y-[1px] text-text-primary/70 hover:text-text-primary">
+            <CoinIcon className="mr-1" size={16} />
+            <span className="text-xs font-mono">{formatCost(totalCost)}</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>{getTooltipContent()}</TooltipContent>
+      </Tooltip>
+
+      {hasSavings && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center justify-center h-full transition-colors cursor-default translate-y-[1px] text-green-600 dark:text-green-500 hover:text-green-500">
+              <PiggyBank className="mr-1" size={16} />
+              <span className="text-xs font-mono">-{formatCost(accumulatedSavings)}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            {intl.formatMessage(i18n.savings, {
+              savings: `${currency}${accumulatedSavings.toFixed(4)}`,
+            })}
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
   );
 }

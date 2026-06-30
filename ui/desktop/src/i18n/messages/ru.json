@@ -320,6 +320,9 @@
   "costTracker.pricingUnavailable": {
     "defaultMessage": "Данные о ценах недоступны для {model}"
   },
+  "costTracker.savings": {
+    "defaultMessage": "Сэкономлено {savings} в режиме экономии средств"
+  },
   "costTracker.totalSessionCost": {
     "defaultMessage": "Итоговая стоимость сеанса: {cost}"
   },

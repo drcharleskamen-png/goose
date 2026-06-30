@@ -320,6 +320,9 @@
   "costTracker.pricingUnavailable": {
     "defaultMessage": "{model} için fiyatlandırma verileri mevcut değil"
   },
+  "costTracker.savings": {
+    "defaultMessage": "Maliyet tasarrufu moduyla şimdiye kadar {savings} tasarruf edildi"
+  },
   "costTracker.totalSessionCost": {
     "defaultMessage": "Toplam oturum maliyeti: {cost}"
   },

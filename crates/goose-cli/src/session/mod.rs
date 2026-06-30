@@ -1632,6 +1632,7 @@ impl CliSession {
                         &model_config.model_name,
                         &metadata.usage,
                     );
+                    output::display_cost_savings(metadata.accumulated_savings);
                 }
             }
             Err(_) => {

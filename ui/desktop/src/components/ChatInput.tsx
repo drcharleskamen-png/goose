@@ -180,6 +180,7 @@ interface ChatInputProps {
   accumulatedInputTokens?: number;
   accumulatedOutputTokens?: number;
   accumulatedCost?: number | null;
+  accumulatedSavings?: number | null;
   messages?: Message[];
   disableAnimation?: boolean;
   recipe?: Recipe | null;
@@ -215,6 +216,7 @@ export default function ChatInput({
   accumulatedInputTokens,
   accumulatedOutputTokens,
   accumulatedCost,
+  accumulatedSavings,
   messages = [],
   disableAnimation = false,
   recipe: _recipe,
@@ -1626,6 +1628,7 @@ export default function ChatInput({
                 inputTokens={accumulatedInputTokens}
                 outputTokens={accumulatedOutputTokens}
                 accumulatedCost={accumulatedCost}
+                accumulatedSavings={accumulatedSavings}
                 model={effectiveModel}
                 provider={effectiveProvider}
               />

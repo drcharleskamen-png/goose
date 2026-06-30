@@ -498,6 +498,7 @@ pub async fn build_session(session_config: SessionBuilderConfig) -> CliSession {
     goose::posthog::set_session_context("cli", session_config.resume);
 
     let config = Config::global();
+    goose::agents::router_bundle::ensure_bundle_if_enabled().await;
     let agent: Agent = Agent::new();
 
     if session_config.container.is_some() {

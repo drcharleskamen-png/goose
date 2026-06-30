@@ -320,6 +320,9 @@
   "costTracker.pricingUnavailable": {
     "defaultMessage": "Datos de precios no disponibles para {model}"
   },
+  "costTracker.savings": {
+    "defaultMessage": "Ahorrado {savings} hasta ahora con el modo de ahorro de costos"
+  },
   "costTracker.totalSessionCost": {
     "defaultMessage": "Costo total de la sesión: {cost}"
   },

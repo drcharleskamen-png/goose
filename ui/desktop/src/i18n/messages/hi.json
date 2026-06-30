@@ -320,6 +320,9 @@
   "costTracker.pricingUnavailable": {
     "defaultMessage": "{model} के लिए मूल्य निर्धारण डेटा उपलब्ध नहीं है"
   },
+  "costTracker.savings": {
+    "defaultMessage": "लागत बचत मोड के साथ अब तक {savings} की बचत हुई"
+  },
   "costTracker.totalSessionCost": {
     "defaultMessage": "कुल सत्र लागत: {cost}"
   },

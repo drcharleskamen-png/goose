@@ -21,6 +21,19 @@ pub use ladder::ModelLadder;
 pub use render::render_for_routing;
 
 use goose_providers::conversation::Conversation;
+use std::path::PathBuf;
+
+/// The default on-disk location for the complexity model bundle
+/// (`~/.goose/complexity_model/`), or `None` if the home directory can't be
+/// resolved.
+pub fn default_bundle_dir() -> Option<PathBuf> {
+    embedding::default_bundle_dir()
+}
+
+/// Whether a usable bundle is already installed at the default location.
+pub fn bundle_present() -> bool {
+    embedding::bundle_present()
+}
 
 /// What the agent loop needs to know after routing a turn.
 #[derive(Debug, Clone)]

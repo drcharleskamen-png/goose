@@ -320,6 +320,9 @@
   "costTracker.pricingUnavailable": {
     "defaultMessage": "Pricing data unavailable for {model}"
   },
+  "costTracker.savings": {
+    "defaultMessage": "Saved {savings} so far with cost savings mode"
+  },
   "costTracker.totalSessionCost": {
     "defaultMessage": "Total session cost: {cost}"
   },

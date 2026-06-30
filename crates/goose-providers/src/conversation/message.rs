@@ -1100,6 +1100,8 @@ pub struct TokenState {
     #[serde(default)]
     pub accumulated_cache_write_tokens: i32,
     pub accumulated_cost: Option<f64>,
+    #[serde(default)]
+    pub accumulated_savings: Option<f64>,
 }
 
 #[cfg(test)]

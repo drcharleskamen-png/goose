@@ -7954,6 +7954,11 @@
             "format": "double",
             "nullable": true
           },
+          "accumulated_savings": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
           "accumulated_usage": {
             "$ref": "#/components/schemas/Usage"
           },
@@ -8631,6 +8636,11 @@
           "accumulatedOutputTokens": {
             "type": "integer",
             "format": "int32"
+          },
+          "accumulatedSavings": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
           },
           "accumulatedTotalTokens": {
             "type": "integer",

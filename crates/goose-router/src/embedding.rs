@@ -362,9 +362,15 @@ impl Router for EmbeddingRouter {
     }
 }
 
-fn default_bundle_dir() -> Option<PathBuf> {
+pub(crate) fn default_bundle_dir() -> Option<PathBuf> {
     let home = dirs::home_dir()?;
     Some(home.join(".goose").join(DEFAULT_BUNDLE_SUBDIR))
+}
+
+/// Whether a usable bundle (identified by its `config.json`) is present at the
+/// default location.
+pub(crate) fn bundle_present() -> bool {
+    default_bundle_dir().is_some_and(|dir| dir.join("config.json").exists())
 }
 
 fn sigmoid(x: f32) -> f32 {

@@ -320,6 +320,9 @@
   "costTracker.pricingUnavailable": {
     "defaultMessage": "无法获取 {model} 的定价数据"
   },
+  "costTracker.savings": {
+    "defaultMessage": "成本节省模式迄今已节省 {savings}"
+  },
   "costTracker.totalSessionCost": {
     "defaultMessage": "本次会话总费用：{cost}"
   },

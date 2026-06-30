@@ -1447,6 +1447,19 @@ pub fn display_cost_usage(provider: &str, model: &str, usage: &Usage) {
     }
 }
 
+/// Display accumulated cost-savings from cost-savings routing, if any.
+pub fn display_cost_savings(savings: Option<f64>) {
+    if let Some(savings) = savings {
+        if savings > 0.0 {
+            use console::style;
+            eprintln!(
+                "Saved: {} USD with cost savings mode",
+                style(format!("${:.4}", savings)).green(),
+            );
+        }
+    }
+}
+
 pub struct McpSpinners {
     bars: HashMap<String, ProgressBar>,
     log_spinner: Option<ProgressBar>,

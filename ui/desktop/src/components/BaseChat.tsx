@@ -521,6 +521,9 @@ export default function BaseChat({
               undefined
             }
             accumulatedCost={tokenState?.accumulatedCost ?? session?.accumulated_cost ?? undefined}
+            accumulatedSavings={
+              tokenState?.accumulatedSavings ?? session?.accumulated_savings ?? undefined
+            }
             droppedFiles={droppedFiles}
             onFilesProcessed={() => setDroppedFiles([])} // Clear dropped files after processing
             messages={messages}

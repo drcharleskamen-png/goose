@@ -534,6 +534,15 @@ impl Agent {
             .and_then(|pn| self.accumulate_cost(session.accumulated_cost, usage, pn))
             .or(session.accumulated_cost);
 
+        let accumulated_savings = session
+            .provider_name
+            .as_deref()
+            .zip(session.model_config.as_ref())
+            .and_then(|(pn, main)| {
+                accumulate_savings(session.accumulated_savings, usage, pn, &main.model_name)
+            })
+            .or(session.accumulated_savings);
+
         let current_usage = if is_compaction_usage {
             // After compaction: summary output becomes new input context
             let new_input = usage.usage.output_tokens;
@@ -548,6 +557,7 @@ impl Agent {
             .usage(current_usage)
             .accumulated_usage(accumulated_usage)
             .accumulated_cost(accumulated_cost)
+            .accumulated_savings(accumulated_savings)
             .apply()
             .await?;
 
@@ -567,6 +577,36 @@ impl Agent {
 
         Some(existing.unwrap_or(0.0) + chunk_cost)
     }
+}
+
+/// Estimate the cost-savings from cost-savings routing for this usage chunk.
+///
+/// When a turn was served by a cheaper ladder model (`usage.model`) instead of
+/// the session's main model (`main_model`), the savings is what the same
+/// observed token usage would have cost on the main model minus what it
+/// actually cost. Returns `None` (leaving the running total untouched) when the
+/// turn ran on the main model or either model lacks pricing data.
+fn accumulate_savings(
+    existing: Option<f64>,
+    usage: &ProviderUsage,
+    provider_name: &str,
+    main_model: &str,
+) -> Option<f64> {
+    if usage.model == main_model {
+        return None;
+    }
+
+    let actual =
+        crate::providers::canonical::maybe_get_canonical_model(provider_name, &usage.model)?
+            .cost
+            .estimate_cost(&usage.usage)?;
+    let counterfactual =
+        crate::providers::canonical::maybe_get_canonical_model(provider_name, main_model)?
+            .cost
+            .estimate_cost(&usage.usage)?;
+
+    let delta = (counterfactual - actual).max(0.0);
+    Some(existing.unwrap_or(0.0) + delta)
 }
 
 /// Check whether a tool should be callable by an app based on MCP Apps visibility metadata.
@@ -710,6 +750,41 @@ mod tests {
         assert_eq!(names, sorted);
 
         Ok(())
+    }
+
+    #[test]
+    fn accumulate_savings_returns_none_when_on_main_model() {
+        let usage = ProviderUsage::new(
+            "gpt-4o".to_string(),
+            Usage::new(Some(1000), Some(1000), Some(2000)),
+        );
+        assert!(super::accumulate_savings(None, &usage, "openai", "gpt-4o").is_none());
+    }
+
+    #[test]
+    fn accumulate_savings_accrues_positive_delta_for_cheaper_model() {
+        // Turn served by the cheap model while the session's main model is gpt-4o.
+        let usage = ProviderUsage::new(
+            "gpt-4o-mini".to_string(),
+            Usage::new(Some(1_000_000), Some(1_000_000), Some(2_000_000)),
+        );
+        let savings = super::accumulate_savings(None, &usage, "openai", "gpt-4o")
+            .expect("savings should be computed");
+
+        // gpt-4o: 2.5 in + 10 out = 12.5; gpt-4o-mini: 0.15 in + 0.6 out = 0.75
+        // per 1M tokens each => delta = 11.75
+        assert!((savings - 11.75).abs() < 1e-6, "got {savings}");
+    }
+
+    #[test]
+    fn accumulate_savings_adds_to_existing_total() {
+        let usage = ProviderUsage::new(
+            "gpt-4o-mini".to_string(),
+            Usage::new(Some(1_000_000), Some(1_000_000), Some(2_000_000)),
+        );
+        let savings = super::accumulate_savings(Some(5.0), &usage, "openai", "gpt-4o")
+            .expect("savings should be computed");
+        assert!((savings - 16.75).abs() < 1e-6, "got {savings}");
     }
 
     #[tokio::test]

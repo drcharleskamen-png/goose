@@ -831,6 +831,7 @@ pub(super) fn build_usage_updates(session: &Session) -> Option<UsageUpdates> {
                 accumulated_input_tokens,
                 accumulated_output_tokens,
                 accumulated_cost: session.accumulated_cost,
+                accumulated_savings: session.accumulated_savings,
             }),
         },
         standard: {

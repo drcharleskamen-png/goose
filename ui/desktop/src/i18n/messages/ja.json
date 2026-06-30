@@ -320,6 +320,9 @@
   "costTracker.pricingUnavailable": {
     "defaultMessage": "{model} の料金データは利用できません"
   },
+  "costTracker.savings": {
+    "defaultMessage": "コスト削減モードでこれまでに {savings} を節約しました"
+  },
   "costTracker.totalSessionCost": {
     "defaultMessage": "セッション合計コスト: {cost}"
   },

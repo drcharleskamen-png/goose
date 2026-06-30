@@ -49,6 +49,8 @@ pub struct SessionUsageUpdate {
     pub accumulated_output_tokens: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accumulated_cost: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accumulated_savings: Option<f64>,
 }
 
 /// Live UI/session status. This is not conversation transcript content, and

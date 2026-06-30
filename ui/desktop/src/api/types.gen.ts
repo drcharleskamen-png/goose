@@ -1354,6 +1354,7 @@ export type ScheduledJob = {
 
 export type Session = {
     accumulated_cost?: number | null;
+    accumulated_savings?: number | null;
     accumulated_usage?: Usage;
     archived_at?: string | null;
     conversation?: Conversation | null;
@@ -1554,6 +1555,7 @@ export type TokenState = {
     accumulatedCost?: number | null;
     accumulatedInputTokens: number;
     accumulatedOutputTokens: number;
+    accumulatedSavings?: number | null;
     accumulatedTotalTokens: number;
     cacheReadTokens?: number;
     cacheWriteTokens?: number;

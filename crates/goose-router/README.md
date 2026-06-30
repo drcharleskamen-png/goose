@@ -43,6 +43,39 @@ weights.safetensors    # MLP head weights
 
 If the bundle is absent, the router is simply disabled (no error).
 
+### Getting the bundle
+
+The bundle is large (~250MB) and is **not** shipped with goose. When cost
+savings mode is enabled and no bundle is installed, goose downloads it on first
+use and installs it atomically into `~/.goose/complexity_model/`.
+
+By default the bundle is pulled from a **Hugging Face repo**, reusing goose's
+existing HF credentials (`HF_TOKEN` / the HF OAuth login), so private repos work
+transparently. Set `GOOSE_ROUTER_BUNDLE_HF_REPO` to use your own repo; otherwise
+a built-in default repo is used. The bundle files are expected under the
+`embedding/complexity_model/` subdirectory of the repo (override with
+`GOOSE_ROUTER_BUNDLE_HF_PATH`).
+
+```bash
+# optional — override the default repo / location
+export GOOSE_ROUTER_BUNDLE_HF_REPO="your-org/llm-router-goose"
+# export GOOSE_ROUTER_BUNDLE_HF_PATH="embedding/complexity_model"
+# export GOOSE_ROUTER_BUNDLE_HF_REVISION="main"
+```
+
+Alternatively, point at a **zip archive URL** (verified against an optional
+SHA-256). This is only used when no HF repo is configured:
+
+```bash
+export GOOSE_ROUTER_BUNDLE_URL="https://.../complexity_model.zip"
+export GOOSE_ROUTER_BUNDLE_SHA256="<sha256 of the zip>"   # optional but recommended
+```
+
+The download is fail-open: if it fails, the checksum doesn't match, or the
+source is misconfigured, routing is simply disabled and the session continues
+on the main model. You can also install a bundle manually by unpacking it into
+`~/.goose/complexity_model/` yourself, in which case no download is attempted.
+
 ## The ladder
 
 A ladder is an ordered list of models, cheapest first, plus ascending band
@@ -75,7 +108,8 @@ export GOOSE_ROUTER_LADDER="gpt-4o-mini,gpt-4o,o3"   # cheap -> dear
 # export GOOSE_ROUTER_BANDS="0.40,0.65"
 ```
 
-Then drop a bundle into `~/.goose/complexity_model/`. A single-model ladder
+On first use goose downloads and installs the bundle from Hugging Face (unless
+one is already present at `~/.goose/complexity_model/`). A single-model ladder
 (`GOOSE_ROUTER_LADDER="gpt-4o-mini"`) acts as a simple "use the cheap model
 below the first band" switch.
 
@@ -89,3 +123,8 @@ all fall back to the main session model.
 | `GOOSE_COST_SAVINGS_MODE` | Master on/off switch (default `false`) |
 | `GOOSE_ROUTER_LADDER` | Comma-separated model names, cheap → dear. No ladder ⇒ routing stays on the main model. |
 | `GOOSE_ROUTER_BANDS` | Ascending complexity thresholds overriding the bundle's fitted defaults |
+| `GOOSE_ROUTER_BUNDLE_HF_REPO` | Hugging Face repo to download the bundle from on first use (default: a built-in public repo) |
+| `GOOSE_ROUTER_BUNDLE_HF_PATH` | Subdirectory within the HF repo holding the bundle files (default `embedding/complexity_model`) |
+| `GOOSE_ROUTER_BUNDLE_HF_REVISION` | HF repo revision/branch to download (default `main`) |
+| `GOOSE_ROUTER_BUNDLE_URL` | Zip archive URL to auto-download the bundle from when no HF repo is configured |
+| `GOOSE_ROUTER_BUNDLE_SHA256` | Expected SHA-256 of the downloaded zip; verified before install (recommended) |

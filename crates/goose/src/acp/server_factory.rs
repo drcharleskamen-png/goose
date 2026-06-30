@@ -56,6 +56,7 @@ impl AcpServer {
     pub async fn create_agent(&self) -> Result<Arc<GooseAcpAgent>> {
         let config = crate::config::Config::global();
         let disable_session_naming = config.get_goose_disable_session_naming().unwrap_or(false);
+        crate::agents::router_bundle::ensure_bundle_if_enabled().await;
         let scheduler = self.scheduler().await?;
 
         let provider_factory: AcpProviderFactory =

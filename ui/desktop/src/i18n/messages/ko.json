@@ -320,6 +320,9 @@
   "costTracker.pricingUnavailable": {
     "defaultMessage": "{model}에 대한 가격 데이터가 없습니다."
   },
+  "costTracker.savings": {
+    "defaultMessage": "비용 절감 모드로 지금까지 {savings}를 절약했습니다"
+  },
   "costTracker.totalSessionCost": {
     "defaultMessage": "총 세션 비용: {cost}"
   },

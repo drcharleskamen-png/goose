@@ -8,7 +8,11 @@ export function applyGooseSessionNotification(
   const update = notification.update;
 
   switch (update.sessionUpdate) {
-    case 'usage_update':
+    case 'usage_update': {
+      // `accumulatedSavings` is sent by the server but may not yet be present
+      // in the published SDK types, so read it defensively.
+      const accumulatedSavings = (update as { accumulatedSavings?: number | null })
+        .accumulatedSavings;
       return [
         {
           type: 'tokenState',
@@ -20,9 +24,13 @@ export function applyGooseSessionNotification(
             ...(update.accumulatedCost !== undefined
               ? { accumulatedCost: update.accumulatedCost }
               : {}),
+            ...(accumulatedSavings !== undefined && accumulatedSavings !== null
+              ? { accumulatedSavings }
+              : {}),
           },
         },
       ];
+    }
     case 'status_message':
       return applyStatusMessage(state, notification.sessionId, update);
     default:
