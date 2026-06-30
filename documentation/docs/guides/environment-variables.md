@@ -316,37 +316,6 @@ REM Windows: use a POSIX-like shell instead of cmd.exe
 set GOOSE_SHELL=C:\cygwin64\bin\bash.exe
 ```
 
-### Enhanced Code Editing
-
-These variables configure [AI-powered code editing](/docs/guides/enhanced-code-editing) for the Developer extension's `str_replace` tool. All three variables must be set and non-empty for the feature to activate.
-
-| Variable | Purpose | Values | Default |
-|----------|---------|---------|---------|
-| `GOOSE_EDITOR_API_KEY` | API key for the code editing model | API key string | None |
-| `GOOSE_EDITOR_HOST` | API endpoint for the code editing model | URL (e.g., "https://api.openai.com/v1") | None |
-| `GOOSE_EDITOR_MODEL` | Model to use for code editing | Model name (e.g., "gpt-4o", "claude-sonnet-4") | None |
-
-**Examples**
-
-This feature works with any OpenAI-compatible API endpoint, for example:
-
-```bash
-# OpenAI configuration
-export GOOSE_EDITOR_API_KEY="sk-..."
-export GOOSE_EDITOR_HOST="https://api.openai.com/v1"
-export GOOSE_EDITOR_MODEL="gpt-4o"
-
-# Anthropic configuration (via OpenAI-compatible proxy)
-export GOOSE_EDITOR_API_KEY="sk-ant-..."
-export GOOSE_EDITOR_HOST="https://api.anthropic.com/v1"
-export GOOSE_EDITOR_MODEL="claude-sonnet-4-20250514"
-
-# Local model configuration
-export GOOSE_EDITOR_API_KEY="your-key"
-export GOOSE_EDITOR_HOST="http://localhost:8000/v1"
-export GOOSE_EDITOR_MODEL="your-model"
-```
-
 ## Security and Privacy
 
 These variables control security features, credential storage, and anonymous usage data collection.
@@ -389,14 +358,6 @@ When the keyring is disabled (or cannot be accessed and goose [falls back to fil
 * macOS/Linux: `~/.config/goose/secrets.yaml`
 * Windows: `%APPDATA%\Block\goose\config\secrets.yaml`
 :::
-
-### macOS Sandbox for goose Desktop
-
-Optional [macOS sandbox](/docs/guides/sandbox) for goose Desktop that restricts file access, network connections, and process execution using Apple's `sandbox-exec` technology.
-
-| Variable | Purpose | Values | Default |
-|----------|---------|--------|---------|
-| `GOOSE_SANDBOX` | Enable the sandbox with [customizable security controls](/docs/guides/sandbox#configuration) | `true` or `1` to enable | `false` |
 
 ## Network Configuration
 

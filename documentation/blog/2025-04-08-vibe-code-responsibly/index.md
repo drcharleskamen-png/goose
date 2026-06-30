@@ -44,9 +44,9 @@ This creative freedom comes with significant risks. Many developers have encount
 Most folks define "vibe coding" as purely chaotic development with no rules. I'm redefining it as flowing with AI while protecting your project, team, and future self.
 :::
 
-### 1. Use `.gooseignore` to Protect Sensitive Files
+### 1. Use permissions to protect sensitive work
 
-Goose supports [`.gooseignore`](https://goose-docs.ai/docs/guides/using-gooseignore) files. The concept is similar to `.gitignore` files for your AI agent. It defines which files and folders Goose should *not* read, modify, or interact with.
+Use Goose's permission modes and tool permissions when you want more control over what Goose can run or modify.
 
 Use this when you want to prevent:
 
