@@ -131,6 +131,10 @@ impl Conversation {
         self.0.pop()
     }
 
+    pub fn remove(&mut self, index: usize) -> Message {
+        self.0.remove(index)
+    }
+
     pub fn truncate(&mut self, len: usize) {
         self.0.truncate(len);
     }
