@@ -513,12 +513,29 @@ fn is_signed_thinking(content: &MessageContent) -> bool {
     }
 }
 
-/// Drops duplicate signed thinking blocks within one assistant message, keeping
-/// the first. Some signed-replay APIs (like Anthropic) reject a turn that
-/// repeats the same signed block, which can happen when a standalone thinking
-/// message is merged with a tool-call message that re-embedded that thinking.
+/// Drops duplicate signed thinking blocks, keeping the first occurrence. Some
+/// signed-replay APIs (like Anthropic) reject a request that repeats the same
+/// signed block more than once.
+///
+/// Duplicates arise two ways, both handled here:
+///   - Within one assistant message, when a standalone thinking message is
+///     merged with a tool-call message that re-embedded the same thinking.
+///   - Across assistant messages, when the agent splits one provider turn into
+///     several tool-call messages (interleaved with tool results) that each
+///     carry a copy of the turn's signed thinking.
+///
+/// The `seen` set spans the whole conversation. A signed block carries a
+/// cryptographic signature unique to its generation, so an exact (text +
+/// signature) match can only be the same turn's thinking copied onto split
+/// messages — never two genuinely distinct thoughts. Unsigned reasoning
+/// summaries are left untouched, since providers like Kimi/DeepSeek require
+/// them echoed on every tool-call message.
+///
+/// This runs before any provider formatter, so it covers every Claude transport
+/// (direct Anthropic, Bedrock, Databricks, Vertex) in one place.
 fn dedupe_signed_thinking(messages: Vec<Message>) -> (Vec<Message>, Vec<String>) {
     let mut issues = Vec::new();
+    let mut seen: Vec<MessageContent> = Vec::new();
 
     let fixed_messages = messages
         .into_iter()
@@ -527,18 +544,15 @@ fn dedupe_signed_thinking(messages: Vec<Message>) -> (Vec<Message>, Vec<String>)
                 return message;
             }
 
-            let mut seen: Vec<&MessageContent> = Vec::new();
             let original_len = message.content.len();
             let mut deduped: Vec<MessageContent> = Vec::with_capacity(original_len);
             for content in &message.content {
-                // Only signed blocks are deduped; unsigned reasoning summaries
-                // may legitimately repeat, so they are left untouched.
                 let is_signed = is_signed_thinking(content);
-                if is_signed && seen.contains(&content) {
+                if is_signed && seen.contains(content) {
                     continue;
                 }
                 if is_signed {
-                    seen.push(content);
+                    seen.push(content.clone());
                 }
                 deduped.push(content.clone());
             }
@@ -1492,6 +1506,88 @@ mod tests {
         assert_eq!(
             thinking_count, 2,
             "duplicate unsigned thinking blocks must be kept"
+        );
+    }
+
+    #[test]
+    fn test_dedupes_signed_thinking_across_split_tool_messages() {
+        use crate::conversation::message::MessageContent;
+        use rmcp::model::Content;
+
+        // The agent splits one provider turn with multiple tool calls into one
+        // assistant message per call (interleaved with tool results), each
+        // carrying the same signed thinking. merge_consecutive_messages cannot
+        // merge them because tool results sit between, so the dedupe must span
+        // messages and keep the signed block only on the first.
+        let messages = vec![
+            Message::user().with_text("Use both tools"),
+            Message::assistant()
+                .with_thinking("multi-tool reasoning", "sig-1")
+                .with_tool_request(
+                    "call_1",
+                    Ok(CallToolRequestParams::new("tool_a").with_arguments(object!({"p": 1}))),
+                ),
+            Message::user().with_tool_response(
+                "call_1",
+                Ok(rmcp::model::CallToolResult::success(vec![Content::text(
+                    "ok",
+                )])),
+            ),
+            Message::assistant()
+                .with_thinking("multi-tool reasoning", "sig-1")
+                .with_tool_request(
+                    "call_2",
+                    Ok(CallToolRequestParams::new("tool_b").with_arguments(object!({"p": 2}))),
+                ),
+            Message::user().with_tool_response(
+                "call_2",
+                Ok(rmcp::model::CallToolResult::success(vec![Content::text(
+                    "ok",
+                )])),
+            ),
+            Message::user().with_text("Now continue"),
+        ];
+
+        let (fixed, issues) = fix_conversation(Conversation::new_unvalidated(messages));
+
+        assert!(
+            issues
+                .iter()
+                .any(|i| i == "Removed duplicate signed thinking block"),
+            "expected cross-message dedupe issue, got: {:?}",
+            issues
+        );
+
+        let fixed_messages = fixed.messages();
+        let total_thinking = fixed_messages
+            .iter()
+            .flat_map(|m| m.content.iter())
+            .filter(|c| {
+                matches!(
+                    c,
+                    MessageContent::Thinking(_) | MessageContent::RedactedThinking(_)
+                )
+            })
+            .count();
+        assert_eq!(
+            total_thinking, 1,
+            "the repeated signed block must survive only once across the turn"
+        );
+
+        let total_tool_requests = fixed_messages
+            .iter()
+            .flat_map(|m| m.content.iter())
+            .filter(|c| matches!(c, MessageContent::ToolRequest(_)))
+            .count();
+        assert_eq!(total_tool_requests, 2, "both tool calls must be preserved");
+
+        // The first split message keeps the thinking; the second loses it.
+        assert!(
+            fixed_messages[1]
+                .content
+                .iter()
+                .any(|c| matches!(c, MessageContent::Thinking(_))),
+            "first split message keeps signed thinking"
         );
     }
 
