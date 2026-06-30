@@ -140,7 +140,6 @@ impl DeclarativeProvider {
     pub fn stream(
         &self,
         model: ProviderModelConfig,
-        session_id: String,
         system: String,
         messages: Vec<ProviderMessage>,
     ) -> Result<Arc<DeclarativeProviderStream>, GooseError> {
@@ -149,13 +148,9 @@ impl DeclarativeProvider {
             .iter()
             .map(ProviderMessage::to_goose_message)
             .collect::<Vec<_>>();
-        let stream = self.runtime.block_on(self.provider.stream(
-            &model,
-            &session_id,
-            &system,
-            &messages,
-            &[],
-        ))?;
+        let stream =
+            self.runtime
+                .block_on(self.provider.stream(&model, &system, &messages, &[]))?;
 
         Ok(Arc::new(DeclarativeProviderStream {
             stream: Mutex::new(stream),

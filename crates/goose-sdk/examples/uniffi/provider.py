@@ -33,7 +33,6 @@ def main() -> None:
     messages = [ProviderMessage(role=MessageRole.USER, text="what is the capital of France?")]
     stream = provider.stream(
         model,
-        "",
         "You are a knowledgable geography expert",
         messages,
     )
