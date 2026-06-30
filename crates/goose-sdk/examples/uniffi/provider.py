@@ -16,8 +16,7 @@ from aaif_goose import (  # noqa: E402
 
 
 def main() -> None:
-    provider_json = (HERE.parent.parent.parent / "goose-providers" / "examples" / "deepseek.json").read_text()
-    provider = DeclarativeProvider.from_json(provider_json)
+    provider = DeclarativeProvider.from_json((HERE.parent / "deepseek.json").read_text())
     model = ProviderModelConfig(model_name="deepseek-v4-flash")
     messages = [ProviderMessage(role=MessageRole.USER, text="what is the capital of France?")]
     stream = provider.stream(
@@ -26,7 +25,6 @@ def main() -> None:
         messages,
     )
 
-    print(f"{provider.name()}:")
     while chunk := stream.next():
         if chunk.text:
             print(chunk.text, end="")
