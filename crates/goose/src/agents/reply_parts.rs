@@ -539,18 +539,17 @@ impl Agent {
             usage.usage
         };
 
-        // Accumulated totals must be incremented (not set) so a background
-        // subagent rolling up concurrently is not clobbered; the context window
-        // has a single writer and is set outright.
+        // Set the context window outright (single writer) while incrementing the
+        // accumulated totals, so a subagent rolling up concurrently is not
+        // clobbered - both in one statement.
         manager
-            .update(session_id)
-            .schedule_id(schedule_id)
-            .usage(current_usage)
-            .apply()
-            .await?;
-
-        manager
-            .add_accumulated_usage(session_id, usage.usage, cost_delta)
+            .update_usage_metrics(
+                session_id,
+                schedule_id,
+                current_usage,
+                usage.usage,
+                cost_delta,
+            )
             .await?;
 
         Ok(())

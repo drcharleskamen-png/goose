@@ -403,6 +403,29 @@ impl SessionManager {
             .await
     }
 
+    /// Set the context-window `usage` outright and increment the accumulated
+    /// totals in a single statement. The accumulated columns are incremented (not
+    /// set) so a concurrent subagent roll-up is not clobbered. `cost_delta` of
+    /// `None` leaves `accumulated_cost` unchanged.
+    pub async fn update_usage_metrics(
+        &self,
+        session_id: &str,
+        schedule_id: Option<String>,
+        current_usage: Usage,
+        accumulated_delta: Usage,
+        cost_delta: Option<f64>,
+    ) -> Result<()> {
+        self.storage
+            .update_usage_metrics(
+                session_id,
+                schedule_id,
+                current_usage,
+                accumulated_delta,
+                cost_delta,
+            )
+            .await
+    }
+
     async fn apply_update_inner(&self, builder: SessionUpdateBuilder<'_>) -> Result<()> {
         self.storage.apply_update(builder).await
     }
@@ -1600,6 +1623,58 @@ impl SessionStorage {
         .bind(usage.cache_write_input_tokens)
         .bind(cost)
         .bind(cost)
+        .bind(session_id)
+        .execute(&mut *tx)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(anyhow::anyhow!("Session not found: {}", session_id));
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn update_usage_metrics(
+        &self,
+        session_id: &str,
+        schedule_id: Option<String>,
+        current_usage: Usage,
+        accumulated_delta: Usage,
+        cost_delta: Option<f64>,
+    ) -> Result<()> {
+        let pool = self.pool().await?;
+        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+        let result = sqlx::query(
+            "UPDATE sessions SET \
+             schedule_id = ?, \
+             total_tokens = ?, \
+             input_tokens = ?, \
+             output_tokens = ?, \
+             cache_read_tokens = ?, \
+             cache_write_tokens = ?, \
+             accumulated_total_tokens = COALESCE(accumulated_total_tokens, 0) + COALESCE(?, 0), \
+             accumulated_input_tokens = COALESCE(accumulated_input_tokens, 0) + COALESCE(?, 0), \
+             accumulated_output_tokens = COALESCE(accumulated_output_tokens, 0) + COALESCE(?, 0), \
+             accumulated_cache_read_tokens = COALESCE(accumulated_cache_read_tokens, 0) + COALESCE(?, 0), \
+             accumulated_cache_write_tokens = COALESCE(accumulated_cache_write_tokens, 0) + COALESCE(?, 0), \
+             accumulated_cost = CASE WHEN ? IS NULL THEN accumulated_cost ELSE COALESCE(accumulated_cost, 0) + ? END, \
+             updated_at = datetime('now') \
+             WHERE id = ?",
+        )
+        .bind(schedule_id)
+        .bind(current_usage.total_tokens)
+        .bind(current_usage.input_tokens)
+        .bind(current_usage.output_tokens)
+        .bind(current_usage.cache_read_input_tokens)
+        .bind(current_usage.cache_write_input_tokens)
+        .bind(accumulated_delta.total_tokens)
+        .bind(accumulated_delta.input_tokens)
+        .bind(accumulated_delta.output_tokens)
+        .bind(accumulated_delta.cache_read_input_tokens)
+        .bind(accumulated_delta.cache_write_input_tokens)
+        .bind(cost_delta)
+        .bind(cost_delta)
         .bind(session_id)
         .execute(&mut *tx)
         .await?;
@@ -3726,6 +3801,51 @@ mod tests {
             loaded.accumulated_cost,
             Some(0.75),
             "a None cost estimate must leave accumulated cost unchanged"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_update_usage_metrics_sets_context_and_increments_accumulated() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+        let parent = sm
+            .create_session(
+                PathBuf::from("/tmp/test"),
+                "Parent".to_string(),
+                SessionType::User,
+                GooseMode::default(),
+            )
+            .await
+            .unwrap();
+
+        let first = Usage::new(Some(1000), Some(200), Some(1200));
+        sm.update_usage_metrics(&parent.id, None, first, first, Some(0.10))
+            .await
+            .unwrap();
+
+        let second = Usage::new(Some(1500), Some(300), Some(1800));
+        sm.update_usage_metrics(
+            &parent.id,
+            Some("sched-1".to_string()),
+            second,
+            second,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let loaded = sm.get_session(&parent.id, false).await.unwrap();
+        assert_eq!(
+            loaded.usage, second,
+            "context window is set to the latest snapshot"
+        );
+        assert_eq!(loaded.accumulated_usage.total_tokens, Some(1200 + 1800));
+        assert_eq!(loaded.accumulated_usage.input_tokens, Some(1000 + 1500));
+        assert_eq!(loaded.schedule_id, Some("sched-1".to_string()));
+        assert_eq!(
+            loaded.accumulated_cost,
+            Some(0.10),
+            "None cost_delta must leave accumulated cost unchanged"
         );
     }
 
