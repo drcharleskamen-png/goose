@@ -317,14 +317,28 @@ export const startGooseServe = async ({
     });
   }
 
-  const gooseProcess = spawn(goosePath, args, {
+  const spawnOptions = {
     env: buildGooseServeEnv(secretKey, goosePath, additionalEnv),
     cwd: workingDir,
     windowsHide: true,
     detached: process.platform === 'win32',
-    shell: false,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+    shell: false as const,
+    stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'],
+  };
+
+  const safeSpawnOptions = {
+    ...spawnOptions,
+    env: Object.fromEntries(
+      Object.entries(spawnOptions.env).map(([key, value]) =>
+        key.toLowerCase().includes('secret') || key.toLowerCase().includes('key')
+          ? [key, '[REDACTED]']
+          : [key, value]
+      )
+    ),
+  };
+  logger.info('Spawn options:', JSON.stringify(safeSpawnOptions, null, 2));
+
+  const gooseProcess = spawn(goosePath, args, spawnOptions);
   if (startupTrace) {
     startupTrace.diagnostics.pid = gooseProcess.pid ?? null;
     startupTrace.record('spawn_success', { pid: gooseProcess.pid ?? null });

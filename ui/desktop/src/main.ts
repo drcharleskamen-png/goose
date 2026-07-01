@@ -25,7 +25,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync, spawn, execFile } from 'child_process';
 import 'dotenv/config';
-import { checkServerStatus } from './goosed';
+import { checkServerStatus } from './backendStatus';
 import { startGooseServe } from './gooseServe';
 import { GooseServeLeaseRegistry, type GooseServeLease } from './gooseServeLeaseRegistry';
 import { createClient, createConfig } from './api/client';
@@ -293,14 +293,13 @@ async function configureProxy() {
 
 if (started) app.quit();
 
-// Certificate trust for goosed servers (local and external).
+// Certificate trust for backend servers.
 // Both certificate-error (renderer) and setCertificateVerifyProc (main-process
-// net.fetch) pin to the exact cert fingerprint. For locally-spawned goosed the
-// fingerprint comes from its stdout; for external backends we use Trust-On-First-Use
-// (TOFU) — the first TLS handshake pins the cert for the lifetime of the process.
+// net.fetch) pin to the exact cert fingerprint. External backends use
+// Trust-On-First-Use (TOFU) when no fingerprint is configured.
 let pinnedCertFingerprint: string | null = null;
 
-// Cached hostname of the configured external goosed server, updated when a
+// Cached hostname of the configured external backend, updated when a
 // chat is created so we don't hit the filesystem on every TLS handshake.
 let trustedExternalHostname: string | null = null;
 
@@ -325,9 +324,7 @@ function normalizeFingerprint(fp: string): string {
   return fp.toUpperCase();
 }
 
-// Renderer requests: pin to the exact cert goosed generated once known.
-// Before the fingerprint is available (during the health-check bootstrap
-// window) any localhost cert is accepted so the server can come up.
+// Renderer requests: pin to the exact cert once known.
 app.on('certificate-error', (event, _webContents, url, _error, certificate, callback) => {
   const parsed = new URL(url);
   if (!isTrustedHost(parsed.hostname)) {
@@ -351,7 +348,7 @@ app.whenReady().then(() => {
   appConfig.GOOSE_LOCALE = getConfiguredGooseLocale();
 });
 
-// Main-process net.fetch: pin to the exact cert goosed generated.
+// Main-process net.fetch: pin to the exact cert once known.
 app.whenReady().then(() => {
   session.defaultSession.setCertificateVerifyProc((request, callback) => {
     if (!isTrustedHost(request.hostname)) {
@@ -842,20 +839,83 @@ const resolveGoosePathRoot = (): string | undefined => {
 
 const GENERATED_SECRET = crypto.randomBytes(32).toString('hex');
 
+interface ExternalBackend {
+  source: 'env' | 'settings';
+  url: string;
+  secret: string;
+  certFingerprint?: string;
+}
+
+const getExternalBackendUrlFromEnv = (): string | null => {
+  if (!process.env.GOOSE_EXTERNAL_BACKEND) {
+    return null;
+  }
+
+  const configuredUrl = process.env.GOOSE_EXTERNAL_BACKEND_URL?.trim();
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  return `http://127.0.0.1:${process.env.GOOSE_PORT || '3000'}`;
+};
+
+const getExternalBackendFromEnv = (): ExternalBackend | null => {
+  const url = getExternalBackendUrlFromEnv();
+  if (!url) {
+    return null;
+  }
+
+  const secret = process.env.GOOSE_SERVER__SECRET_KEY;
+  if (!secret) {
+    throw new Error(
+      'GOOSE_SERVER__SECRET_KEY must be set when using GOOSE_EXTERNAL_BACKEND. ' +
+        'Set it to the same value on both the server and the desktop client.'
+    );
+  }
+
+  return {
+    source: 'env',
+    url,
+    secret,
+  };
+};
+
 const getServerSecret = (settings: Settings): string => {
   if (settings.externalGoosed?.enabled && settings.externalGoosed.secret) {
     return settings.externalGoosed.secret;
   }
-  if (process.env.GOOSE_EXTERNAL_BACKEND) {
-    if (!process.env.GOOSE_SERVER__SECRET_KEY) {
-      throw new Error(
-        'GOOSE_SERVER__SECRET_KEY must be set when using GOOSE_EXTERNAL_BACKEND. ' +
-          'Set it to the same value on both the server and the desktop client.'
-      );
-    }
-    return process.env.GOOSE_SERVER__SECRET_KEY;
-  }
   return GENERATED_SECRET;
+};
+
+const getActiveExternalBackend = (settings: Settings): ExternalBackend | null => {
+  const envBackend = getExternalBackendFromEnv();
+  if (envBackend) {
+    return envBackend;
+  }
+
+  if (settings.externalGoosed?.enabled && settings.externalGoosed.url) {
+    return {
+      source: 'settings',
+      url: settings.externalGoosed.url,
+      secret: getServerSecret(settings),
+      certFingerprint: settings.externalGoosed.certFingerprint,
+    };
+  }
+
+  return null;
+};
+
+const getExternalBackendForCsp = (settings: Settings) => {
+  const envUrl = getExternalBackendUrlFromEnv();
+  if (!envUrl) {
+    return settings.externalGoosed;
+  }
+
+  return {
+    ...settings.externalGoosed,
+    enabled: true,
+    url: envUrl,
+  };
 };
 
 const createMainProcessBackendClient = (baseUrl: string, serverSecret: string): Client =>
@@ -923,10 +983,23 @@ const createChat = async (
   } = options;
   const settings = getSettings();
 
-  // `externalGoosed` is a legacy name kept for on-disk settings compatibility;
-  // the remote backend it points at is now an ACP server, not goosed.
-  if (settings.externalGoosed?.enabled && settings.externalGoosed.certFingerprint) {
-    const url = settings.externalGoosed.url;
+  let externalBackend: ExternalBackend | null;
+  try {
+    externalBackend = getActiveExternalBackend(settings);
+  } catch (error) {
+    dialog.showMessageBoxSync({
+      type: 'error',
+      title: 'External Backend Misconfigured',
+      message: 'The external backend environment is invalid.',
+      detail: errorMessage(error),
+      buttons: ['Quit'],
+    });
+    app.quit();
+    return;
+  }
+
+  if (externalBackend?.certFingerprint) {
+    const url = externalBackend.url;
     const usesHttps = (() => {
       try {
         return new URL(url).protocol === 'https:';
@@ -960,13 +1033,11 @@ const createChat = async (
     }
   }
 
-  const externalBackend = settings.externalGoosed;
-  const externalBackendEnabled = Boolean(externalBackend?.enabled && externalBackend.url);
-  const serverSecret = externalBackendEnabled ? getServerSecret(settings) : GENERATED_SECRET;
+  const serverSecret = externalBackend ? externalBackend.secret : GENERATED_SECRET;
   let workingDir = dir || os.homedir();
   let gooseServeLease: GooseServeLease | null = null;
 
-  if (externalBackendEnabled && externalBackend?.url) {
+  if (externalBackend) {
     try {
       const externalBaseUrl = normalizeAcpHttpBaseUrl(externalBackend.url);
       trustedExternalHostname = new URL(externalBaseUrl).hostname;
@@ -979,17 +1050,21 @@ const createChat = async (
         []
       );
       if (!externalBackendReady) {
+        const canDisableExternalBackend = externalBackend.source === 'settings';
         const response = dialog.showMessageBoxSync({
           type: 'error',
           title: 'External Backend Unreachable',
           message: `Could not connect to external backend at ${externalBaseUrl}`,
-          detail: 'The external backend must be running and expose /status at the configured URL.',
-          buttons: ['Disable External Backend & Retry', 'Quit'],
+          detail:
+            'The external backend must be running and expose /status under the configured base URL.',
+          buttons: canDisableExternalBackend
+            ? ['Disable External Backend & Retry', 'Quit']
+            : ['Quit'],
           defaultId: 0,
-          cancelId: 1,
+          cancelId: canDisableExternalBackend ? 1 : 0,
         });
 
-        if (response === 0) {
+        if (canDisableExternalBackend && response === 0) {
           updateSettings((s) => {
             if (s.externalGoosed) {
               s.externalGoosed.enabled = false;
@@ -1007,17 +1082,20 @@ const createChat = async (
       );
     } catch (error) {
       log.error('External ACP backend is misconfigured', error);
+      const canDisableExternalBackend = externalBackend.source === 'settings';
       const response = dialog.showMessageBoxSync({
         type: 'error',
         title: 'External Backend Misconfigured',
         message: 'The external backend URL is invalid.',
         detail: errorMessage(error),
-        buttons: ['Disable External Backend & Retry', 'Quit'],
+        buttons: canDisableExternalBackend
+          ? ['Disable External Backend & Retry', 'Quit']
+          : ['Quit'],
         defaultId: 0,
-        cancelId: 1,
+        cancelId: canDisableExternalBackend ? 1 : 0,
       });
 
-      if (response === 0) {
+      if (canDisableExternalBackend && response === 0) {
         updateSettings((s) => {
           if (s.externalGoosed) {
             s.externalGoosed.enabled = false;
@@ -1822,10 +1900,7 @@ ipcMain.handle('set-setting', (_event, key: SettingKey, value: unknown) => {
 
 ipcMain.handle('get-secret-key', () => {
   const settings = getSettings();
-  if (settings.externalGoosed?.enabled && settings.externalGoosed.url) {
-    return getServerSecret(settings);
-  }
-  return GENERATED_SECRET;
+  return getActiveExternalBackend(settings)?.secret ?? GENERATED_SECRET;
 });
 
 ipcMain.handle('get-acp-url', async (event) => {
@@ -2286,14 +2361,14 @@ async function appMain() {
     }
   });
 
-  // Add CSP headers to all sessions — recomputed on every response so that
-  // changes to externalGoosed settings take effect without restarting the app.
+  // Add CSP headers to all sessions, recomputed on every response so external
+  // backend settings take effect without restarting the app.
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const currentSettings = getSettings();
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': buildCSP(currentSettings.externalGoosed),
+        'Content-Security-Policy': buildCSP(getExternalBackendForCsp(currentSettings)),
       },
     });
   });
@@ -2969,7 +3044,7 @@ async function getAllowList(): Promise<string[]> {
 app.on('will-quit', async () => {
   const gooseServeLeaseCount = gooseServeLeases.activeLeaseCount();
   if (gooseServeLeaseCount > 0) {
-    log.info(`App quitting, terminating ${gooseServeLeaseCount} goose serve process(es)`);
+    log.info(`App quitting, cleaning up ${gooseServeLeaseCount} backend lease(s)`);
     await gooseServeLeases.cleanupAll();
   }
 

@@ -4,13 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer } from 'net';
 import { Buffer } from 'node:buffer';
-import { status } from './api';
 import { Client, createClient, createConfig } from './api/client';
 import {
   appendTail,
   createStartupDiagnostics,
   type StartupDiagnostics,
 } from './startupDiagnostics';
+import { isFatalError } from './backendStatus';
+export { checkServerStatus, isFatalError, type CheckServerStatusOptions } from './backendStatus';
 
 export interface Logger {
   info: (...args: unknown[]) => void;
@@ -80,44 +81,6 @@ export const findGoosedBinaryPath = (options: FindBinaryOptions = {}): string =>
   throw new Error(
     `Goosed binary not found in any of the possible paths: ${possiblePaths.join(', ')}`
   );
-};
-
-export interface CheckServerStatusOptions {
-  onEvent?: (name: string, details?: Record<string, unknown>) => void;
-}
-
-export const checkServerStatus = async (
-  client: Client,
-  errorLog: string[],
-  options: CheckServerStatusOptions = {}
-): Promise<boolean> => {
-  const timeout = 30000;
-  const interval = 100;
-  const maxAttempts = Math.ceil(timeout / interval);
-  options.onEvent?.('healthcheck_start', { timeoutMs: timeout, intervalMs: interval });
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (errorLog.some(isFatalError)) {
-      options.onEvent?.('healthcheck_fatal_error', { attempt });
-      return false;
-    }
-
-    try {
-      await status({ client, throwOnError: true });
-      options.onEvent?.('healthcheck_success', { attempt });
-      return true;
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, interval));
-    }
-  }
-
-  options.onEvent?.('healthcheck_timeout', { timeoutMs: timeout });
-  return false;
-};
-
-export const isFatalError = (line: string): boolean => {
-  const fatalPatterns = [/panicked at/, /RUST_BACKTRACE/, /fatal error/i];
-  return fatalPatterns.some((pattern) => pattern.test(line));
 };
 
 export const buildGoosedEnv = (

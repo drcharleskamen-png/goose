@@ -205,11 +205,12 @@ To debug the Goose server, run it from an IDE. The configuration will depend on 
 
 ```
 export GOOSE_SERVER__SECRET_KEY=test
-cargo run --package goose-server --bin goosed -- agent   # or: `just run-server`
+cargo run --package goose-cli --bin goose -- serve --platform desktop --host 127.0.0.1 --port 3000
 ```
 
-The server listens on port `3000` by default; this can be changed by setting the
-`GOOSE_PORT` environment variable.
+The `debug-ui` recipe connects to `http://127.0.0.1:3000` by default. If the
+server uses another port, set `GOOSE_PORT` when starting the UI, or set
+`GOOSE_EXTERNAL_BACKEND_URL` to the server's HTTP base URL.
 
 Once the server is running, start a UI and connect it to the server by running:
 
