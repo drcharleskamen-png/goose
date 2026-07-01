@@ -46,7 +46,7 @@ Most folks define "vibe coding" as purely chaotic development with no rules. I'm
 
 ### 1. Use permissions to protect sensitive work
 
-Use Goose's permission modes and tool permissions when you want more control over what Goose can run or modify.
+Use goose's permission modes and tool permissions when you want more control over what goose can run or modify.
 
 Use this when you want to prevent:
 

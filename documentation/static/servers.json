@@ -111,6 +111,11 @@
     "endorsed": true,
     "environmentVariables": [
       {
+        "name": "BROWSERBASE_PROJECT_ID",
+        "description": "Required environment variable",
+        "required": true
+      },
+      {
         "name": "BROWSERBASE_API_KEY",
         "description": "Required environment variable",
         "required": true
@@ -576,7 +581,7 @@
     "id": "reddit-mcp",
     "name": "Reddit",
     "description": "Reddit API integration for posts and comments",
-    "command": "npx -y reddit-mcp",
+    "command": "uvx --from git+https://github.com/adhikasp/mcp-reddit.git mcp-reddit",
     "link": "https://github.com/adhikasp/mcp-reddit",
     "installation_notes": "Install using npx package manager.",
     "is_builtin": false,
