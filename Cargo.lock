@@ -5144,7 +5144,7 @@ dependencies = [
 
 [[package]]
 name = "goose-provider-types"
-version = "1.41.0"
+version = "0.1.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -5174,7 +5174,7 @@ dependencies = [
 
 [[package]]
 name = "goose-providers"
-version = "1.41.0"
+version = "0.1.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-stream",

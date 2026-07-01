@@ -36,7 +36,7 @@ agent-client-protocol-schema = { workspace = true }
 
 uniffi = { version = "0.31", features = ["cli"], optional = true }
 thiserror = { version = "2", optional = true }
-goose-providers = { version = "1.39.0", path = "../goose-providers", features = ["rustls-tls"], optional = true }
+goose-providers = { version = "0.1.0-alpha.0", path = "../goose-providers", features = ["rustls-tls"], optional = true }
 futures = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"], optional = true }
