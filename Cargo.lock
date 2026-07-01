@@ -5205,7 +5205,7 @@ dependencies = [
 
 [[package]]
 name = "goose-sdk"
-version = "1.41.0"
+version = "0.1.0-alpha.0"
 dependencies = [
  "agent-client-protocol",
  "agent-client-protocol-schema",
@@ -5222,7 +5222,7 @@ dependencies = [
 
 [[package]]
 name = "goose-sdk-types"
-version = "1.41.0"
+version = "0.1.0-alpha.0"
 dependencies = [
  "agent-client-protocol",
  "agent-client-protocol-schema",
