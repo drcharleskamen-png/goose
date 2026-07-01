@@ -618,7 +618,7 @@
     "id": "repomix-mcp",
     "name": "Repomix",
     "description": "Repository analysis and code organization",
-    "command": "npx -y repomix-mcp",
+    "command": "npx -y repomix --mcp",
     "link": "https://github.com/yamadashy/repomix",
     "installation_notes": "Install using npx package manager.",
     "is_builtin": false,

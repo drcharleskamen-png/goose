@@ -17,12 +17,12 @@ This tutorial covers how to add the [Repomix MCP Server](https://github.com/yama
 :::tip Quick Install
 <Tabs groupId="interface">
   <TabItem value="ui" label="goose Desktop" default>
-  [Launch the installer](goose://extension?cmd=npx&arg=-y&arg=repomix-mcp&id=repomix-mcp&name=Repomix&description=Pack%20repositories%20into%20AI-friendly%20formats%20for%20goose)
+  [Launch the installer](goose://extension?cmd=npx&arg=-y&arg=repomix&arg=--mcp&id=repomix-mcp&name=Repomix&description=Pack%20repositories%20into%20AI-friendly%20formats%20for%20goose)
   </TabItem>
   <TabItem value="cli" label="goose CLI">
   **Command**
   ```sh
-  npx -y repomix-mcp
+  npx -y repomix --mcp
   ```
   </TabItem>
 </Tabs>
@@ -41,14 +41,14 @@ Note that you'll need [Node.js](https://nodejs.org/) installed on your system to
     extensionName="Repomix"
     description="Pack repositories into AI-friendly formats for goose"
     command="npx"
-    args={["-y", "repomix-mcp"]}
+    args={["-y", "repomix", "--mcp"]}
   />
 </TabItem>
   <TabItem value="cli" label="goose CLI">
     <CLIExtensionInstructions
       name="Repomix"
       description="Pack repositories into AI-friendly formats for goose"
-      command="npx -y repomix-mcp"
+      command="npx -y repomix --mcp"
     />
   </TabItem>
 </Tabs>
