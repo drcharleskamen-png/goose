@@ -1,3 +1,4 @@
+use crate::conversation::token_usage::{CostSource, ProviderUsage};
 use crate::conversation::tool_result_serde;
 use crate::mcp_utils::extract_text_from_resource;
 use crate::utils::sanitize_unicode_tags;
@@ -666,6 +667,54 @@ pub struct InferenceMetadata {
     pub resolved_model: Option<String>,
 }
 
+/// Token usage and cost of a single provider call, attached to the turn's
+/// assistant message for display and recorded to the session's usage ledger.
+#[derive(ToSchema, Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageUsage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_source: Option<CostSource>,
+    /// Wall-clock generation time, used by the client for a tokens/sec readout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elapsed_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_to_first_token_ms: Option<u64>,
+    /// Usage from a compaction/summarization call rather than a normal turn.
+    /// Aggregation counts it; the client can badge it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_compaction: bool,
+}
+
+impl MessageUsage {
+    pub fn from_provider_usage(usage: &ProviderUsage, is_compaction: bool) -> Self {
+        let stats = usage.stats.as_ref();
+        MessageUsage {
+            input_tokens: usage.usage.input_tokens,
+            output_tokens: usage.usage.output_tokens,
+            total_tokens: usage.usage.total_tokens,
+            cache_read_tokens: usage.usage.cache_read_input_tokens,
+            cache_write_tokens: usage.usage.cache_write_input_tokens,
+            cost: usage.cost,
+            cost_source: usage.cost_source,
+            elapsed_ms: stats.and_then(|s| s.elapsed_ms),
+            time_to_first_token_ms: stats.and_then(|s| s.time_to_first_token_ms),
+            is_compaction,
+        }
+    }
+}
+
 #[derive(ToSchema, Clone, PartialEq, Serialize, Deserialize, Debug)]
 /// Metadata for message visibility and model inference details
 #[serde(rename_all = "camelCase")]
@@ -681,6 +730,11 @@ pub struct MessageMetadata {
     /// without matching user-visible text. Never sent to providers.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub steer: bool,
+    /// Per-message token usage/cost, populated and serialized to clients as
+    /// groundwork for the upcoming per-message UI (session aggregation reads the
+    /// ledger, not this). Boxed to keep the common no-usage message small.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<Box<MessageUsage>>,
 }
 
 impl Default for MessageMetadata {
@@ -690,6 +744,7 @@ impl Default for MessageMetadata {
             agent_visible: true,
             inference: None,
             steer: false,
+            usage: None,
         }
     }
 }
