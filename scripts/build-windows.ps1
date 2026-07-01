@@ -80,11 +80,11 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "  Dependencies installed." -ForegroundColor Green
 Write-Host ""
 
-# Step 4: Build generated desktop assets
-Write-Host "[5/7] Building Goose SDK and compiling i18n messages..." -ForegroundColor Yellow
+# Step 4: Build desktop assets
+Write-Host "[5/7] Building Goose SDK, clearing Vite cache, and compiling i18n messages..." -ForegroundColor Yellow
 pnpm run build-goose-sdk
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Goose SDK build failed!" -ForegroundColor Red
+    Write-Host "Goose SDK build or Vite cache cleanup failed!" -ForegroundColor Red
     Pop-Location
     exit 1
 }
@@ -99,7 +99,7 @@ Write-Host ""
 
 # Step 5: Package
 Write-Host "[6/7] Packaging Goose Desktop..." -ForegroundColor Yellow
-npx electron-forge package
+pnpm exec electron-forge package
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Packaging failed!" -ForegroundColor Red
     Pop-Location
@@ -110,10 +110,10 @@ Write-Host ""
 
 # Step 6: Make installer
 Write-Host "[7/7] Creating Windows installer..." -ForegroundColor Yellow
-npx electron-forge make
+pnpm exec electron-forge make
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Make failed! Trying with squirrel only..." -ForegroundColor Yellow
-    npx electron-forge make --targets=@electron-forge/maker-squirrel
+    pnpm exec electron-forge make --targets=@electron-forge/maker-squirrel
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Fallback installer build also failed!" -ForegroundColor Red
         Pop-Location
