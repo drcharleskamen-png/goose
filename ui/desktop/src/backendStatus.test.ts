@@ -1,21 +1,33 @@
 import { describe, expect, it, vi } from 'vitest';
 import { checkBackendStatus } from './backendStatus';
 
+type FetchInput = Parameters<typeof globalThis.fetch>[0];
 type FetchInit = Parameters<typeof globalThis.fetch>[1];
+
+const fetchInputUrl = (input: FetchInput): string => {
+  if (typeof input === 'string') {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.toString();
+  }
+  return input.url;
+};
 
 describe('checkBackendStatus', () => {
   it('checks /status and validates the secret against /acp', async () => {
-    const fetch = vi.fn(async (input: string, init?: FetchInit) => {
-      if (input === 'https://example.com/goose/status') {
+    const fetch = vi.fn(async (input: FetchInput, init?: FetchInit) => {
+      const url = fetchInputUrl(input);
+      if (url === 'https://example.com/goose/status') {
         expect(init?.headers).toEqual({ 'X-Secret-Key': 'test-secret' });
         return new Response(null, { status: 200 });
       }
-      if (input === 'https://example.com/goose/acp?token=test-secret') {
+      if (url === 'https://example.com/goose/acp?token=test-secret') {
         expect(init).toBeUndefined();
         return new Response(null, { status: 406 });
       }
 
-      throw new Error(`Unexpected URL: ${input}`);
+      throw new Error(`Unexpected URL: ${url}`);
     });
 
     await expect(
@@ -27,7 +39,7 @@ describe('checkBackendStatus', () => {
     ).resolves.toBe(true);
 
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(fetch.mock.calls.map(([input]) => input)).toEqual([
+    expect(fetch.mock.calls.map(([input]) => fetchInputUrl(input))).toEqual([
       'https://example.com/goose/status',
       'https://example.com/goose/acp?token=test-secret',
     ]);
@@ -35,15 +47,16 @@ describe('checkBackendStatus', () => {
 
   it('fails immediately when the ACP auth probe rejects the secret', async () => {
     const onEvent = vi.fn();
-    const fetch = vi.fn(async (input: string) => {
-      if (input === 'https://example.com/status') {
+    const fetch = vi.fn(async (input: FetchInput) => {
+      const url = fetchInputUrl(input);
+      if (url === 'https://example.com/status') {
         return new Response(null, { status: 200 });
       }
-      if (input === 'https://example.com/acp?token=wrong-secret') {
+      if (url === 'https://example.com/acp?token=wrong-secret') {
         return new Response(null, { status: 401 });
       }
 
-      throw new Error(`Unexpected URL: ${input}`);
+      throw new Error(`Unexpected URL: ${url}`);
     });
 
     await expect(
