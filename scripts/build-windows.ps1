@@ -80,15 +80,21 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "  Dependencies installed." -ForegroundColor Green
 Write-Host ""
 
-# Step 4: Generate API types
-Write-Host "[5/7] Generating API types..." -ForegroundColor Yellow
-pnpm run generate-api
+# Step 4: Build generated desktop assets
+Write-Host "[5/7] Building Goose SDK and compiling i18n messages..." -ForegroundColor Yellow
+pnpm run build-goose-sdk
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "API type generation failed!" -ForegroundColor Red
+    Write-Host "Goose SDK build failed!" -ForegroundColor Red
     Pop-Location
     exit 1
 }
-Write-Host "  API types generated." -ForegroundColor Green
+pnpm run i18n:compile
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "i18n compilation failed!" -ForegroundColor Red
+    Pop-Location
+    exit 1
+}
+Write-Host "  Desktop assets built." -ForegroundColor Green
 Write-Host ""
 
 # Step 5: Package
