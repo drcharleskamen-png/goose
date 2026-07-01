@@ -392,18 +392,6 @@ export const startGooseServe = async ({
     stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'],
   };
 
-  const safeSpawnOptions = {
-    ...spawnOptions,
-    env: Object.fromEntries(
-      Object.entries(spawnOptions.env).map(([key, value]) =>
-        key.toLowerCase().includes('secret') || key.toLowerCase().includes('key')
-          ? [key, '[REDACTED]']
-          : [key, value]
-      )
-    ),
-  };
-  logger.info('Spawn options:', JSON.stringify(safeSpawnOptions, null, 2));
-
   const gooseProcess = spawn(goosePath, args, spawnOptions);
   if (startupTrace) {
     startupTrace.diagnostics.pid = gooseProcess.pid ?? null;
