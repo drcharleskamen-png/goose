@@ -1043,7 +1043,7 @@ const createChat = async (
           title: 'External Backend Unreachable',
           message: `Could not connect to external backend at ${externalBaseUrl}`,
           detail:
-            'The external backend must be running and expose /status under the configured base URL.',
+            'The external backend must be running and the configured secret must match GOOSE_SERVER__SECRET_KEY on the server.',
           buttons: canDisableExternalBackend
             ? ['Disable External Backend & Retry', 'Quit']
             : ['Quit'],
@@ -1115,7 +1115,9 @@ const createChat = async (
       });
       if (!gooseServeResult.certFingerprint) {
         await gooseServeResult.cleanup();
-        throw new Error('goose serve started with TLS but did not return a certificate fingerprint');
+        throw new Error(
+          'goose serve started with TLS but did not return a certificate fingerprint'
+        );
       }
 
       const localCertFingerprint = normalizeFingerprint(gooseServeResult.certFingerprint);

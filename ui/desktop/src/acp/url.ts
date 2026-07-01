@@ -49,6 +49,25 @@ export function normalizeAcpHttpBaseUrl(rawBaseUrl: string): string {
   return `${url.origin}${pathname}`;
 }
 
+function httpEndpointUrlFromHttpBase(rawBaseUrl: string, endpoint: 'status' | 'acp'): string {
+  const baseUrl = normalizeAcpHttpBaseUrl(rawBaseUrl);
+  const url = new URL(baseUrl);
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/${endpoint}`;
+  return url.toString();
+}
+
+export function statusHttpUrlFromHttpBase(rawBaseUrl: string): string {
+  return httpEndpointUrlFromHttpBase(rawBaseUrl, 'status');
+}
+
+export function acpHttpUrlFromHttpBase(rawBaseUrl: string, token?: string): string {
+  const url = new URL(httpEndpointUrlFromHttpBase(rawBaseUrl, 'acp'));
+  if (token) {
+    url.searchParams.set('token', token);
+  }
+  return url.toString();
+}
+
 export function acpWebSocketUrlFromHttpBase(rawBaseUrl: string, token: string): string {
   const baseUrl = normalizeAcpHttpBaseUrl(rawBaseUrl);
   const url = new URL(baseUrl);

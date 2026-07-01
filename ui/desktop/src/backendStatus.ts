@@ -1,3 +1,5 @@
+import { acpHttpUrlFromHttpBase, statusHttpUrlFromHttpBase } from './acp/url';
+
 export interface CheckServerStatusOptions {
   onEvent?: (name: string, details?: Record<string, unknown>) => void;
 }
@@ -15,14 +17,6 @@ export const isFatalError = (line: string): boolean => {
   return fatalPatterns.some((pattern) => pattern.test(line));
 };
 
-const statusUrlFromBase = (baseUrl: string): string => {
-  const url = new URL(baseUrl);
-  url.pathname = `${url.pathname.replace(/\/+$/, '')}/status`;
-  url.search = '';
-  url.hash = '';
-  return url.toString();
-};
-
 export const checkBackendStatus = async ({
   baseUrl,
   serverSecret,
@@ -33,7 +27,8 @@ export const checkBackendStatus = async ({
   const timeout = 30000;
   const interval = 100;
   const maxAttempts = Math.ceil(timeout / interval);
-  const statusUrl = statusUrlFromBase(baseUrl);
+  const statusUrl = statusHttpUrlFromHttpBase(baseUrl);
+  const acpUrl = acpHttpUrlFromHttpBase(baseUrl, serverSecret);
   options.onEvent?.('healthcheck_start', { timeoutMs: timeout, intervalMs: interval });
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -49,8 +44,16 @@ export const checkBackendStatus = async ({
         },
       });
       if (response.ok) {
-        options.onEvent?.('healthcheck_success', { attempt });
-        return true;
+        const authResponse = await fetch(acpUrl);
+        // GET /acp without an SSE Accept header returns 406 after auth succeeds.
+        if (authResponse.status === 406) {
+          options.onEvent?.('healthcheck_success', { attempt });
+          return true;
+        }
+        if (authResponse.status === 401 || authResponse.status === 403) {
+          options.onEvent?.('healthcheck_auth_failed', { attempt });
+          return false;
+        }
       }
     } catch {
       // Retry until the backend is ready or the timeout expires.

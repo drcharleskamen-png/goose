@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  acpHttpUrlFromHttpBase,
   acpWebSocketUrlFromHttpBase,
   httpBaseFromAcpWebSocketUrl,
   isLoopbackAcpWebSocketUrl,
   normalizeAcpHttpBaseUrl,
+  statusHttpUrlFromHttpBase,
 } from '../url';
 
 describe('httpBaseFromAcpWebSocketUrl', () => {
@@ -85,6 +87,28 @@ describe('normalizeAcpHttpBaseUrl', () => {
     );
     expect(() => normalizeAcpHttpBaseUrl('https://example.com#section')).toThrow(
       'External ACP backend URL must not include query parameters or fragments'
+    );
+  });
+});
+
+describe('HTTP endpoint URLs from ACP HTTP base URLs', () => {
+  it('builds status URLs from root and prefixed bases', () => {
+    expect(statusHttpUrlFromHttpBase('https://example.com/')).toBe('https://example.com/status');
+    expect(statusHttpUrlFromHttpBase('https://example.com/goose/')).toBe(
+      'https://example.com/goose/status'
+    );
+  });
+
+  it('builds ACP URLs from root and prefixed bases', () => {
+    expect(acpHttpUrlFromHttpBase('https://example.com/')).toBe('https://example.com/acp');
+    expect(acpHttpUrlFromHttpBase('https://example.com/goose/')).toBe(
+      'https://example.com/goose/acp'
+    );
+  });
+
+  it('adds ACP query tokens when provided', () => {
+    expect(acpHttpUrlFromHttpBase('https://example.com/goose', 'test secret')).toBe(
+      'https://example.com/goose/acp?token=test+secret'
     );
   });
 });
