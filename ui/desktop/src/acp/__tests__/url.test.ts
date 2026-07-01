@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   acpWebSocketUrlFromHttpBase,
   httpBaseFromAcpWebSocketUrl,
+  isLoopbackAcpWebSocketUrl,
   normalizeAcpHttpBaseUrl,
 } from '../url';
 
@@ -31,15 +32,39 @@ describe('httpBaseFromAcpWebSocketUrl', () => {
   });
 });
 
+describe('isLoopbackAcpWebSocketUrl', () => {
+  it('accepts IPv4 loopback ACP URLs', () => {
+    expect(isLoopbackAcpWebSocketUrl('ws://127.0.0.1:64027/acp?token=secret')).toBe(true);
+    expect(isLoopbackAcpWebSocketUrl('wss://127.12.0.1:64027/acp?token=secret')).toBe(true);
+  });
+
+  it('accepts localhost ACP URLs', () => {
+    expect(isLoopbackAcpWebSocketUrl('ws://localhost:64027/acp?token=secret')).toBe(true);
+  });
+
+  it('accepts IPv6 loopback ACP URLs', () => {
+    expect(isLoopbackAcpWebSocketUrl('ws://[::1]:64027/acp?token=secret')).toBe(true);
+  });
+
+  it('rejects remote ACP URLs', () => {
+    expect(isLoopbackAcpWebSocketUrl('wss://example.com/acp?token=secret')).toBe(false);
+    expect(isLoopbackAcpWebSocketUrl('ws://192.168.1.10:3284/acp?token=secret')).toBe(false);
+  });
+
+  it('rejects non-WebSocket URLs', () => {
+    expect(() => isLoopbackAcpWebSocketUrl('http://127.0.0.1:64027/acp')).toThrow(
+      'ACP URL must use ws: or wss:'
+    );
+  });
+});
+
 describe('normalizeAcpHttpBaseUrl', () => {
   it('normalizes root HTTPS base URLs', () => {
     expect(normalizeAcpHttpBaseUrl('https://example.com/')).toBe('https://example.com');
   });
 
   it('normalizes prefixed HTTPS base URLs', () => {
-    expect(normalizeAcpHttpBaseUrl('https://example.com/goose/')).toBe(
-      'https://example.com/goose'
-    );
+    expect(normalizeAcpHttpBaseUrl('https://example.com/goose/')).toBe('https://example.com/goose');
   });
 
   it('rejects WebSocket URLs', () => {

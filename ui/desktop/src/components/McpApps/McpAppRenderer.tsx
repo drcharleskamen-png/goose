@@ -34,7 +34,7 @@ import type { CallToolResult, JSONRPCRequest, Tool } from '@modelcontextprotocol
 import { GripHorizontal, Maximize2, PictureInPicture2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { callMcpAppTool, readMcpAppResource } from '../../acp/mcp-apps';
-import { httpBaseFromAcpWebSocketUrl } from '../../acp/url';
+import { httpBaseFromAcpWebSocketUrl, isLoopbackAcpWebSocketUrl } from '../../acp/url';
 import { getCachedTools } from './toolsCache';
 import { AppEvents } from '../../constants/events';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -190,6 +190,11 @@ async function fetchMcpAppProxyUrl(csp: McpUiResourceCsp | null): Promise<string
       return null;
     }
 
+    if (!isLoopbackAcpWebSocketUrl(acpUrl)) {
+      console.error('[McpAppRenderer] MCP app proxy is only supported for loopback ACP backends');
+      return null;
+    }
+
     const httpBase = httpBaseFromAcpWebSocketUrl(acpUrl).replace(/\/+$/, '');
     const proxyUrl = new URL(`${httpBase}/mcp-app-proxy`);
     proxyUrl.searchParams.set('secret', secretKey);
@@ -255,7 +260,9 @@ interface GooseAppFrameProps {
   onMessage: (params: {
     content: Array<{ type: string; text?: string }>;
   }) => Promise<Record<string, unknown>>;
-  onOpenLink: (params: { url: string }) => Promise<{ status: 'success' | 'error'; message?: string }>;
+  onOpenLink: (params: {
+    url: string;
+  }) => Promise<{ status: 'success' | 'error'; message?: string }>;
   onCallTool: (params: {
     name: string;
     arguments?: Record<string, unknown>;
@@ -336,12 +343,9 @@ function GooseAppFrame({
       logging: {},
       message: { text: {} },
     };
-    const bridge = new AppBridge(
-      null,
-      { name: 'MCP-UI Host', version: '1.0.0' },
-      capabilities,
-      { hostContext: hostContextRef.current }
-    );
+    const bridge = new AppBridge(null, { name: 'MCP-UI Host', version: '1.0.0' }, capabilities, {
+      hostContext: hostContextRef.current,
+    });
     bridge.onmessage = (params) => onMessageRef.current(params);
     bridge.onopenlink = (params) => onOpenLinkRef.current(params);
     bridge.onloggingmessage = (params) => onLoggingMessageRef.current(params);

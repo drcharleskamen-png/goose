@@ -15,6 +15,17 @@ export function httpBaseFromAcpWebSocketUrl(acpUrl: string): string {
   return `${url.origin}${pathPrefix}`;
 }
 
+export function isLoopbackAcpWebSocketUrl(acpUrl: string): boolean {
+  const url = new URL(acpUrl);
+
+  if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+    throw new Error(`ACP URL must use ws: or wss:, got ${url.protocol}`);
+  }
+
+  const hostname = url.hostname.toLowerCase().replace(/^\[(.*)\]$/, '$1');
+  return hostname === 'localhost' || hostname === '::1' || hostname.startsWith('127.');
+}
+
 export function normalizeAcpHttpBaseUrl(rawBaseUrl: string): string {
   const trimmed = rawBaseUrl.trim();
   if (!trimmed) {
