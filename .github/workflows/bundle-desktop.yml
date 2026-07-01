@@ -32,11 +32,6 @@ on:
         required: false
         type: string
         default: ''
-      backend:
-        description: 'Desktop backend to bundle: goosed or acp'
-        required: false
-        default: 'goosed'
-        type: string
 
 name: Reusable workflow to bundle desktop app
 
@@ -64,7 +59,6 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_SIGNING: ${{ inputs.signing }}
           INPUT_QUICK_TEST: ${{ inputs.quick_test }}
-          INPUT_BACKEND: ${{ inputs.backend }}
         run: |
           echo "=== Workflow Information ==="
           echo "Workflow: ${WORKFLOW_NAME}"
@@ -77,7 +71,6 @@ jobs:
           echo "Version: ${INPUT_VERSION:-not set}"
           echo "Signing: ${INPUT_SIGNING:-false}"
           echo "Quick test: ${INPUT_QUICK_TEST:-true}"
-          echo "Backend: ${INPUT_BACKEND:-goosed}"
 
       # Check initial disk space
       - name: Check initial disk space
@@ -126,15 +119,9 @@ jobs:
 
       # Build the project
       - name: Build desktop backend
-        env:
-          DESKTOP_BACKEND: ${{ inputs.backend }}
         run: |
           source ./bin/activate-hermit
-          if [ "$DESKTOP_BACKEND" = "acp" ]; then
-            cargo build --release -p goose-cli --bin goose
-          else
-            cargo build --release -p goose-server --bin goosed
-          fi
+          cargo build --release -p goose-cli --bin goose
 
       # Post-build cleanup to free space
       - name: Post-build cleanup
@@ -150,18 +137,11 @@ jobs:
           df -h
 
       - name: Copy backend binary into Electron folder
-        env:
-          DESKTOP_BACKEND: ${{ inputs.backend }}
         run: |
           mkdir -p ui/desktop/src/bin
-          rm -f ui/desktop/src/bin/goosed ui/desktop/src/bin/goose
-          if [ "$DESKTOP_BACKEND" = "acp" ]; then
-            cp target/release/goose ui/desktop/src/bin/goose
-            chmod +x ui/desktop/src/bin/goose
-          else
-            cp target/release/goosed ui/desktop/src/bin/goosed
-            chmod +x ui/desktop/src/bin/goosed
-          fi
+          rm -f ui/desktop/src/bin/goose
+          cp target/release/goose ui/desktop/src/bin/goose
+          chmod +x ui/desktop/src/bin/goose
           ls -la ui/desktop/src/bin/
 
       - name: Cache pnpm dependencies
@@ -191,7 +171,6 @@ jobs:
 
       - name: Build App
         env:
-          GOOSE_DESKTOP_BACKEND: ${{ inputs.backend }}
           APPLE_ID: ${{ inputs.signing && secrets.APPLE_ID || '' }}
           APPLE_ID_PASSWORD: ${{ inputs.signing && secrets.APPLE_ID_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ inputs.signing && secrets.APPLE_TEAM_ID || '' }}

@@ -30,11 +30,6 @@ on:
         required: false
         type: string
         default: ''
-      backend:
-        description: 'Desktop backend to bundle: goosed or acp'
-        required: false
-        default: 'goosed'
-        type: string
 
 name: Reusable workflow to bundle desktop app for Intel Mac
 
@@ -79,16 +74,10 @@ jobs:
 
 
       - name: Build desktop backend for Intel macOS (x86_64)
-        env:
-          DESKTOP_BACKEND: ${{ inputs.backend }}
         run: |
           source ./bin/activate-hermit
           rustup target add x86_64-apple-darwin
-          if [ "$DESKTOP_BACKEND" = "acp" ]; then
-            cargo build --release -p goose-cli --bin goose --target x86_64-apple-darwin
-          else
-            cargo build --release -p goose-server --bin goosed --target x86_64-apple-darwin
-          fi
+          cargo build --release -p goose-cli --bin goose --target x86_64-apple-darwin
 
 
 
@@ -107,18 +96,11 @@ jobs:
           df -h
 
       - name: Copy backend binary into Electron folder
-        env:
-          DESKTOP_BACKEND: ${{ inputs.backend }}
         run: |
           mkdir -p ui/desktop/src/bin
-          rm -f ui/desktop/src/bin/goosed ui/desktop/src/bin/goose
-          if [ "$DESKTOP_BACKEND" = "acp" ]; then
-            cp target/x86_64-apple-darwin/release/goose ui/desktop/src/bin/goose
-            chmod +x ui/desktop/src/bin/goose
-          else
-            cp target/x86_64-apple-darwin/release/goosed ui/desktop/src/bin/goosed
-            chmod +x ui/desktop/src/bin/goosed
-          fi
+          rm -f ui/desktop/src/bin/goose
+          cp target/x86_64-apple-darwin/release/goose ui/desktop/src/bin/goose
+          chmod +x ui/desktop/src/bin/goose
           ls -la ui/desktop/src/bin/
 
       - name: Cache pnpm dependencies
@@ -155,7 +137,6 @@ jobs:
 
       - name: Build App
         env:
-          GOOSE_DESKTOP_BACKEND: ${{ inputs.backend }}
           APPLE_ID: ${{ inputs.signing && secrets.APPLE_ID || '' }}
           APPLE_ID_PASSWORD: ${{ inputs.signing && secrets.APPLE_ID_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ inputs.signing && secrets.APPLE_TEAM_ID || '' }}

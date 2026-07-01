@@ -7,14 +7,6 @@ on:
         description: 'Branch name to bundle app from'
         required: true
         type: string
-      backend:
-        description: 'Desktop backend to bundle'
-        required: false
-        type: choice
-        default: goosed
-        options:
-          - goosed
-          - acp
 
 jobs:
   bundle-desktop-unsigned:
@@ -25,7 +17,6 @@ jobs:
     with:
       signing: false
       ref: ${{ inputs.branch }}
-      backend: ${{ inputs.backend }}
 
   bundle-desktop-intel-unsigned:
     uses: ./.github/workflows/bundle-desktop-intel.yml
@@ -35,4 +26,3 @@ jobs:
     with:
       signing: false
       ref: ${{ inputs.branch }}
-      backend: ${{ inputs.backend }}

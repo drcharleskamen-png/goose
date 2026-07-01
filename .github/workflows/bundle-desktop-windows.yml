@@ -13,11 +13,6 @@ on:
         required: false
         type: string
         default: 'standard'
-      backend:
-        description: 'Desktop backend to bundle: goosed or acp'
-        required: false
-        type: string
-        default: 'goosed'
   workflow_call:
     inputs:
       version:
@@ -39,11 +34,6 @@ on:
         required: false
         type: string
         default: 'standard'
-      backend:
-        description: 'Desktop backend to bundle: goosed or acp'
-        required: false
-        type: string
-        default: 'goosed'
 
 # Permissions required for OIDC authentication with Azure Trusted Signing
 permissions:
@@ -123,25 +113,15 @@ jobs:
         env:
           CUDA_COMPUTE_CAP: ${{ inputs.windows_variant == 'cuda' && '80' || '' }}
         run: |
-          $backend = "${{ inputs.backend }}"
           $isCuda = "${{ inputs.windows_variant }}" -eq "cuda"
 
-          Write-Output "Building Windows backend: $backend"
-          if ($backend -eq "acp") {
-            if ($isCuda) {
-              cargo build --release --target x86_64-pc-windows-msvc -p goose-cli --bin goose --features cuda
-            } else {
-              cargo build --release --target x86_64-pc-windows-msvc -p goose-cli --bin goose
-            }
-            $binaryPath = "./target/x86_64-pc-windows-msvc/release/goose.exe"
+          Write-Output "Building Windows ACP backend"
+          if ($isCuda) {
+            cargo build --release --target x86_64-pc-windows-msvc -p goose-cli --bin goose --features cuda
           } else {
-            if ($isCuda) {
-              cargo build --release --target x86_64-pc-windows-msvc -p goose-server --features cuda
-            } else {
-              cargo build --release --target x86_64-pc-windows-msvc -p goose-server
-            }
-            $binaryPath = "./target/x86_64-pc-windows-msvc/release/goosed.exe"
+            cargo build --release --target x86_64-pc-windows-msvc -p goose-cli --bin goose
           }
+          $binaryPath = "./target/x86_64-pc-windows-msvc/release/goose.exe"
 
           # Verify build succeeded
           if (-not (Test-Path $binaryPath)) {
@@ -155,14 +135,8 @@ jobs:
 
       - name: Prepare Windows binary
         shell: bash
-        env:
-          DESKTOP_BACKEND: ${{ inputs.backend }}
         run: |
-          if [ "$DESKTOP_BACKEND" = "acp" ]; then
-            BACKEND_BINARY="./target/x86_64-pc-windows-msvc/release/goose.exe"
-          else
-            BACKEND_BINARY="./target/x86_64-pc-windows-msvc/release/goosed.exe"
-          fi
+          BACKEND_BINARY="./target/x86_64-pc-windows-msvc/release/goose.exe"
 
           if [ ! -f "$BACKEND_BINARY" ]; then
             echo "Windows backend binary not found: $BACKEND_BINARY"
@@ -180,7 +154,7 @@ jobs:
             echo "Copying Windows platform files..."
             for file in ./ui/desktop/src/platform/windows/bin/*.{exe,dll,cmd}; do
               filename="$(basename "$file")"
-              if [ -f "$file" ] && [ "$filename" != "goosed.exe" ] && [ "$filename" != "goose.exe" ]; then
+              if [ -f "$file" ] && [ "$filename" != "goose.exe" ]; then
                 cp -f "$file" ./ui/desktop/src/bin/
               fi
             done
@@ -203,7 +177,6 @@ jobs:
         shell: bash
         env:
           ELECTRON_PLATFORM: win32
-          GOOSE_DESKTOP_BACKEND: ${{ inputs.backend }}
         run: |
           cd ui/desktop
 
@@ -255,18 +228,6 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Sign Windows executables with Azure Trusted Signing
-        if: ${{ inputs.backend != 'acp' }}
-        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82  # v2.0.0
-        with:
-          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT_NAME }}
-          certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
-          files: |
-            ${{ github.workspace }}/dist-windows/Goose.exe
-            ${{ github.workspace }}/dist-windows/resources/bin/goosed.exe
-
-      - name: Sign Windows executables with Azure Trusted Signing (ACP)
-        if: ${{ inputs.backend == 'acp' }}
         uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82  # v2.0.0
         with:
           endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
@@ -279,10 +240,9 @@ jobs:
       - name: Verify signed executables
         shell: pwsh
         run: |
-          $backendExe = if ("${{ inputs.backend }}" -eq "acp") { "goose.exe" } else { "goosed.exe" }
           $files = @(
             "dist-windows/Goose.exe",
-            "dist-windows/resources/bin/$backendExe"
+            "dist-windows/resources/bin/goose.exe"
           )
           foreach ($file in $files) {
             Write-Output "Verifying signature: $file"

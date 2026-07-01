@@ -10,11 +10,6 @@ on:
         description: 'Branch name to bundle app from'
         required: true
         type: string
-      backend:
-        description: 'Desktop backend to bundle: goosed or acp'
-        required: false
-        default: 'goosed'
-        type: string
   workflow_call:
     inputs:
       version:
@@ -26,11 +21,6 @@ on:
         type: string
         required: false
         default: ''
-      backend:
-        description: 'Desktop backend to bundle: goosed or acp'
-        required: false
-        default: 'goosed'
-        type: string
 
 name: "Bundle Desktop (Linux)"
 
@@ -136,7 +126,6 @@ jobs:
 
       - name: Build desktop backend binary
         env:
-          DESKTOP_BACKEND: ${{ inputs.backend }}
           RUST_LOG: debug
           RUST_BACKTRACE: 1
         run: |
@@ -148,27 +137,16 @@ jobs:
             FEATURE_ARGS=(--features vulkan)
           fi
 
-          if [ "$DESKTOP_BACKEND" = "acp" ]; then
-            cargo build --release --target ${TARGET} -p goose-cli --bin goose "${FEATURE_ARGS[@]}"
-          else
-            cargo build --release --target ${TARGET} -p goose-server "${FEATURE_ARGS[@]}"
-          fi
+          cargo build --release --target ${TARGET} -p goose-cli --bin goose "${FEATURE_ARGS[@]}"
 
       - name: Copy backend binary into Electron folder
-        env:
-          DESKTOP_BACKEND: ${{ inputs.backend }}
         run: |
           echo "Copying backend binary to ui/desktop/src/bin/"
           export TARGET="x86_64-unknown-linux-gnu"
           mkdir -p ui/desktop/src/bin
-          rm -f ui/desktop/src/bin/goosed ui/desktop/src/bin/goose
-          if [ "$DESKTOP_BACKEND" = "acp" ]; then
-            cp target/$TARGET/release/goose ui/desktop/src/bin/
-            chmod +x ui/desktop/src/bin/goose
-          else
-            cp target/$TARGET/release/goosed ui/desktop/src/bin/
-            chmod +x ui/desktop/src/bin/goosed
-          fi
+          rm -f ui/desktop/src/bin/goose
+          cp target/$TARGET/release/goose ui/desktop/src/bin/
+          chmod +x ui/desktop/src/bin/goose
           ls -la ui/desktop/src/bin/
 
       - name: Free Rust build artifacts before packaging
@@ -196,7 +174,6 @@ jobs:
 
       - name: Build Linux packages
         env:
-          GOOSE_DESKTOP_BACKEND: ${{ inputs.backend }}
           GOOSE_DESKTOP_LINUX_VARIANT: ${{ matrix.variant }}
         run: |
           source ./bin/activate-hermit
