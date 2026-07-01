@@ -113,6 +113,7 @@ function snapshotWithActivePrompt(activePromptAttemptId: string | null): AcpChat
     activePromptAttemptId,
     activeRunId: activePromptAttemptId ? 'run-1' : null,
     pendingCancelPromptAttemptId: null,
+    conversationCursor: 0,
   };
 }
 
@@ -234,6 +235,23 @@ describe('acpChatSessionController.submitMessage', () => {
     expect(acpChatSessionActions.startPromptAttempt).not.toHaveBeenCalled();
     expect(acpPromptSession).not.toHaveBeenCalled();
   });
+
+  it('ignores submits while a remote active run is present', async () => {
+    vi.mocked(acpChatSessionStore.getSnapshot).mockReturnValue({
+      ...snapshotWithActivePrompt(null),
+      activeRunId: 'run-remote',
+    });
+
+    await expect(
+      acpChatSessionController.submitMessage(SESSION_ID, userMessage(), {
+        getCurrentSnapshot: () => snapshotWithActivePrompt(null),
+        onFinish: vi.fn(),
+      })
+    ).resolves.toBeUndefined();
+
+    expect(acpChatSessionActions.startPromptAttempt).not.toHaveBeenCalled();
+    expect(acpPromptSession).not.toHaveBeenCalled();
+  });
 });
 
 describe('acpChatSessionController.updateMessage', () => {
@@ -285,6 +303,31 @@ describe('acpChatSessionController.updateMessage', () => {
     await expect(
       acpChatSessionController.updateMessage(SESSION_ID, existingMessage.id, 'Updated', 'edit', {
         getCurrentSnapshot: () => currentSnapshot,
+        onFinish: vi.fn(),
+      })
+    ).resolves.toBeUndefined();
+
+    expect(acpChatSessionActions.setChatState).not.toHaveBeenCalledWith(
+      SESSION_ID,
+      ChatState.Thinking
+    );
+    expect(acpTruncateSessionConversation).not.toHaveBeenCalled();
+    expect(acpChatSessionActions.setMessages).not.toHaveBeenCalled();
+    expect(acpPromptSession).not.toHaveBeenCalled();
+  });
+
+  it('ignores edits before truncating while a remote active run is present', async () => {
+    const existingMessage = userMessage();
+    const remoteRunSnapshot: AcpChatSessionSnapshot = {
+      ...snapshotWithActivePrompt(null),
+      activeRunId: 'run-remote',
+      messages: [existingMessage],
+    };
+    vi.mocked(acpChatSessionStore.getSnapshot).mockReturnValue(remoteRunSnapshot);
+
+    await expect(
+      acpChatSessionController.updateMessage(SESSION_ID, existingMessage.id, 'Updated', 'edit', {
+        getCurrentSnapshot: () => remoteRunSnapshot,
         onFinish: vi.fn(),
       })
     ).resolves.toBeUndefined();
@@ -352,7 +395,10 @@ describe('acpChatSessionController.updateMessage', () => {
     resolvePromptCancellation!();
     await updatePromise;
 
-    expect(acpTruncateSessionConversation).toHaveBeenCalledWith(SESSION_ID, existingMessage.created);
+    expect(acpTruncateSessionConversation).toHaveBeenCalledWith(
+      SESSION_ID,
+      existingMessage.created
+    );
     expect(acpPromptSession).toHaveBeenCalled();
     expect(acpChatSessionActions.clearPromptCancellation).not.toHaveBeenCalledWith(
       SESSION_ID,

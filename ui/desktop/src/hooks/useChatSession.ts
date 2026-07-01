@@ -63,7 +63,9 @@ export function useChatSession({
   const chatState = acpSnapshot?.chatState ?? ChatState.LoadingConversation;
   const sessionLoadError = acpSnapshot?.sessionLoadError;
   const tokenState = acpSnapshot?.tokenState ?? initialTokenState;
-  const queueProcessingBlocked = acpSnapshot?.pendingCancelPromptAttemptId != null;
+  const queueProcessingBlocked =
+    acpSnapshot?.pendingCancelPromptAttemptId != null ||
+    (acpSnapshot?.activeRunId != null && acpSnapshot.activePromptAttemptId == null);
 
   const snapshotRef = useRef(acpSnapshot);
   snapshotRef.current = acpSnapshot;
@@ -158,6 +160,7 @@ export function useChatSession({
         currentSnapshot.chatState === ChatState.Streaming ||
         currentSnapshot.chatState === ChatState.Thinking ||
         currentSnapshot.chatState === ChatState.Compacting ||
+        currentSnapshot.activeRunId !== null ||
         currentSnapshot.pendingCancelPromptAttemptId !== null
       ) {
         return;

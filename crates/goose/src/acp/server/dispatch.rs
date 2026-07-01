@@ -163,6 +163,12 @@ impl HandleDispatchFrom<Client> for GooseAcpHandler {
                             agent
                                 .send_and_publish_session_notification(&cx, notification)
                                 .await?;
+                            agent
+                                .publish_session_invalidation(
+                                    &session_id.0,
+                                    &[AcpSessionInvalidation::Config],
+                                )
+                                .await?;
                             responder.respond(SetSessionConfigOptionResponse::new(config_options))?;
 
                             let maybe_refresh = if config_id == "provider" {
@@ -327,11 +333,17 @@ impl HandleDispatchFrom<Client> for GooseAcpHandler {
                                         .send_and_publish_session_notification(
                                             &cx,
                                             SessionNotification::new(
-                                                session_id,
+                                                session_id.clone(),
                                                 SessionUpdate::CurrentModeUpdate(
                                                     CurrentModeUpdate::new(mode_id),
                                                 ),
                                             ),
+                                        )
+                                        .await?;
+                                    agent
+                                        .publish_session_invalidation(
+                                            &session_id.0,
+                                            &[AcpSessionInvalidation::Config],
                                         )
                                         .await?;
                                     responder.respond(resp)?;

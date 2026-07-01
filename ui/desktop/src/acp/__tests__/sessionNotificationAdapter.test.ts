@@ -104,6 +104,38 @@ function firstContent(message: Message): Message['content'][number] {
 
 describe('createAcpSessionNotificationAdapter', () => {
   describe('apply', () => {
+    it('maps standard usage updates into token state', () => {
+      const adapter = createAcpSessionNotificationAdapter();
+
+      expect(
+        adapter.apply(
+          acpUpdate({
+            sessionUpdate: 'usage_update',
+            used: 42,
+            size: 200,
+            cost: { amount: 0.12, currency: 'USD' },
+            _meta: {
+              goose: {
+                accumulatedInputTokens: 10,
+                accumulatedOutputTokens: 15,
+              },
+            },
+          })
+        )
+      ).toEqual([
+        {
+          type: 'tokenState',
+          tokenState: {
+            totalTokens: 42,
+            accumulatedInputTokens: 10,
+            accumulatedOutputTokens: 15,
+            accumulatedTotalTokens: 25,
+            accumulatedCost: 0.12,
+          },
+        },
+      ]);
+    });
+
     describe('message chunks', () => {
       it('maps and merges text chunks by role', () => {
         const adapter = createAcpSessionNotificationAdapter();
@@ -133,6 +165,77 @@ describe('createAcpSessionNotificationAdapter', () => {
 
         expect(messages).toHaveLength(1);
         expect(firstContent(messages[0])).toMatchObject({ type: 'text', text: 'Hell' });
+      });
+
+      it('ignores duplicate replayed text chunks for an existing message id', () => {
+        const adapter = createAcpSessionNotificationAdapter();
+
+        adapter.apply(
+          acpUpdate({
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'Hello' },
+            _meta: {
+              goose: {
+                messageId: 'message-1',
+                created: 123,
+                replay: true,
+              },
+            },
+          } as SessionNotification['update'])
+        );
+        const messages = expectOnlyMessagesChange(
+          adapter.apply(
+            acpUpdate({
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Hello' },
+              _meta: {
+                goose: {
+                  messageId: 'message-1',
+                  created: 123,
+                  replay: true,
+                },
+              },
+            } as SessionNotification['update'])
+          )
+        );
+
+        expect(messages).toHaveLength(1);
+        expect(firstContent(messages[0])).toMatchObject({ type: 'text', text: 'Hello' });
+      });
+
+      it('replaces partial text with a complete replayed text chunk', () => {
+        const adapter = createAcpSessionNotificationAdapter();
+
+        adapter.apply(
+          acpUpdate({
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'Hel' },
+            _meta: {
+              goose: {
+                messageId: 'message-1',
+                created: 123,
+              },
+            },
+          } as SessionNotification['update'])
+        );
+        const messages = expectOnlyMessagesChange(
+          adapter.apply(
+            acpUpdate({
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Hello' },
+              _meta: {
+                goose: {
+                  messageId: 'message-1',
+                  created: 123,
+                  replay: true,
+                },
+              },
+            } as SessionNotification['update'])
+          )
+        );
+
+        expect(messages).toHaveLength(1);
+        expect(firstContent(messages[0])).toMatchObject({ type: 'text', text: 'Hello' });
       });
 
       it('reconciles locally rendered steer text with server chunks', () => {

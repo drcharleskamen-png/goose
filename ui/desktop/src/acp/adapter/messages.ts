@@ -36,6 +36,10 @@ export function applyContentChunk(
       return messagesChangeWithLocalSteerConfirmation(state, existing, gooseMeta.steer);
     }
 
+    if (gooseMeta.replay && reconcileReplayedContent(existing, content)) {
+      return messagesChangeWithLocalSteerConfirmation(state, existing, gooseMeta.steer);
+    }
+
     if (lastContent?.type === 'text' && content.type === 'text') {
       lastContent.text += content.text;
     } else if (content.type === 'image' && hasImageContent(existing, content)) {
@@ -75,6 +79,10 @@ export function applyThoughtChunk(
 
   if (existing) {
     const lastContent = existing.content[existing.content.length - 1];
+    if (gooseMeta.replay && reconcileReplayedThinking(existing, update.content.text)) {
+      return messagesChange(state);
+    }
+
     if (lastContent?.type === 'thinking') {
       lastContent.thinking += update.content.text;
     } else {
@@ -163,6 +171,46 @@ function hasImageContent(
     (content) =>
       content.type === 'image' && content.data === image.data && content.mimeType === image.mimeType
   );
+}
+
+function reconcileReplayedContent(message: Message, content: StreamedContentBlock): boolean {
+  if (content.type === 'image') {
+    return hasImageContent(message, content);
+  }
+
+  const textContent = message.content.find((item) => item.type === 'text');
+  if (!textContent) {
+    return false;
+  }
+
+  if (textContent.text === content.text || textContent.text.length > content.text.length) {
+    return true;
+  }
+
+  if (content.text.startsWith(textContent.text)) {
+    textContent.text = content.text;
+    return true;
+  }
+
+  return false;
+}
+
+function reconcileReplayedThinking(message: Message, thinking: string): boolean {
+  const thinkingContent = message.content.find((item) => item.type === 'thinking');
+  if (!thinkingContent) {
+    return false;
+  }
+
+  if (thinkingContent.thinking === thinking || thinkingContent.thinking.length > thinking.length) {
+    return true;
+  }
+
+  if (thinking.startsWith(thinkingContent.thinking)) {
+    thinkingContent.thinking = thinking;
+    return true;
+  }
+
+  return false;
 }
 
 function messagesChangeWithLocalSteerConfirmation(

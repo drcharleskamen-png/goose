@@ -33,6 +33,20 @@ describe('ACP sessions', () => {
     expect(session.session_type).toBe('scheduled');
   });
 
+  it('preserves the authoritative conversation cursor from ACP session info metadata', () => {
+    const session = sessionInfoToSession(
+      sessionInfo({
+        _meta: {
+          createdAt: '2026-01-01T00:00:00Z',
+          messageCount: 2,
+          conversationCursor: 7,
+        },
+      })
+    );
+
+    expect(session.conversation_revision).toBe(7);
+  });
+
   it('returns session info refreshed after loading the ACP session', async () => {
     const loadedSessionInfo = sessionInfo({
       _meta: {

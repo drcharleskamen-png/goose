@@ -1,43 +1,38 @@
 use super::*;
 
-fn send_replay_content_chunk(
-    cx: &ConnectionTo<Client>,
+fn closed_session_load_error(session_id: &str) -> agent_client_protocol::Error {
+    agent_client_protocol::Error::resource_not_found(Some(session_id.to_string()))
+        .data(format!("Session not found: {}", session_id))
+}
+
+fn replay_content_chunk_notification(
     session_id: &SessionId,
     message: &Message,
     content: ContentBlock,
-) -> std::result::Result<(), agent_client_protocol::Error> {
+) -> SessionNotification {
     let chunk = ContentChunk::new(content).meta(replay_message_meta(message));
     let update = match message.role {
         Role::User => SessionUpdate::UserMessageChunk(chunk),
         Role::Assistant => SessionUpdate::AgentMessageChunk(chunk),
     };
-    cx.send_notification(SessionNotification::new(session_id.clone(), update))
+    SessionNotification::new(session_id.clone(), update)
 }
 
-fn replay_conversation_to_client(
-    cx: &ConnectionTo<Client>,
-    session: &Session,
-) -> Result<HashMap<String, crate::conversation::message::ToolRequest>, agent_client_protocol::Error>
-{
-    let session_id = SessionId::new(session.id.clone());
-    let sid = sid_short(session_id.0.as_ref());
-
-    let messages = session
-        .conversation
-        .as_ref()
-        .map(|c| c.messages().to_vec())
-        .unwrap_or_default();
-    debug!(
-        target: "perf",
-        sid = %sid,
-        messages = messages.len(),
-            "perf: load_session messages loaded"
-    );
-
+pub(super) fn conversation_replay_notifications(
+    session_id: &SessionId,
+    messages: &[Message],
+) -> Result<
+    (
+        Vec<SessionNotification>,
+        HashMap<String, crate::conversation::message::ToolRequest>,
+    ),
+    agent_client_protocol::Error,
+> {
+    let mut notifications = Vec::new();
     let mut replay_tool_requests =
         HashMap::<String, crate::conversation::message::ToolRequest>::new();
 
-    for message in &messages {
+    for message in messages {
         if !message.metadata.user_visible {
             continue;
         }
@@ -49,7 +44,11 @@ fn replay_conversation_to_client(
                     if let Some(audience) = text.audience() {
                         tc = tc.annotations(acp_audience_annotations(audience));
                     }
-                    send_replay_content_chunk(cx, &session_id, message, ContentBlock::Text(tc))?;
+                    notifications.push(replay_content_chunk_notification(
+                        session_id,
+                        message,
+                        ContentBlock::Text(tc),
+                    ));
                 }
                 MessageContent::Image(image) => {
                     let mut image_content =
@@ -58,12 +57,11 @@ fn replay_conversation_to_client(
                         image_content =
                             image_content.annotations(acp_audience_annotations(audience));
                     }
-                    send_replay_content_chunk(
-                        cx,
-                        &session_id,
+                    notifications.push(replay_content_chunk_notification(
+                        session_id,
                         message,
                         ContentBlock::Image(image_content),
-                    )?;
+                    ));
                 }
                 MessageContent::ToolRequest(tool_request) => {
                     replay_tool_requests.insert(tool_request.id.clone(), tool_request.clone());
@@ -81,10 +79,10 @@ fn replay_conversation_to_client(
                         .tool_call
                         .meta(merge_replay_message_meta(meta, message));
 
-                    cx.send_notification(SessionNotification::new(
+                    notifications.push(SessionNotification::new(
                         session_id.clone(),
                         SessionUpdate::ToolCall(tool_call),
-                    ))?;
+                    ));
                 }
                 MessageContent::ToolResponse(tool_response) => {
                     let status = match &tool_response.tool_result {
@@ -126,13 +124,13 @@ fn replay_conversation_to_client(
                                 extract_tool_call_update_meta(tool_response),
                                 message,
                             ));
-                    cx.send_notification(SessionNotification::new(
+                    notifications.push(SessionNotification::new(
                         session_id.clone(),
                         SessionUpdate::ToolCallUpdate(update),
-                    ))?;
+                    ));
                 }
                 MessageContent::Thinking(thinking) => {
-                    cx.send_notification(SessionNotification::new(
+                    notifications.push(SessionNotification::new(
                         session_id.clone(),
                         SessionUpdate::AgentThoughtChunk(
                             ContentChunk::new(ContentBlock::Text(TextContent::new(
@@ -140,12 +138,41 @@ fn replay_conversation_to_client(
                             )))
                             .meta(replay_message_meta(message)),
                         ),
-                    ))?;
+                    ));
                 }
                 MessageContent::SystemNotification(_) => {}
                 _ => {}
             }
         }
+    }
+
+    Ok((notifications, replay_tool_requests))
+}
+
+fn replay_conversation_to_client(
+    cx: &ConnectionTo<Client>,
+    session: &Session,
+) -> Result<HashMap<String, crate::conversation::message::ToolRequest>, agent_client_protocol::Error>
+{
+    let session_id = SessionId::new(session.id.clone());
+    let sid = sid_short(session_id.0.as_ref());
+
+    let messages = session
+        .conversation
+        .as_ref()
+        .map(|c| c.messages().to_vec())
+        .unwrap_or_default();
+    debug!(
+        target: "perf",
+        sid = %sid,
+            messages = messages.len(),
+                "perf: load_session messages loaded"
+    );
+
+    let (notifications, replay_tool_requests) =
+        conversation_replay_notifications(&session_id, &messages)?;
+    for notification in notifications {
+        cx.send_notification(notification)?;
     }
 
     Ok(replay_tool_requests)
@@ -168,6 +195,7 @@ impl GooseAcpAgent {
             .lock()
             .await
             .insert(session_id_str.clone());
+        self.closed_session_ids.lock().await.remove(&session_id_str);
 
         let mut session = match self
             .session_manager
@@ -191,12 +219,50 @@ impl GooseAcpAgent {
             session = self
                 .prepare_session_for_activation(session, args.cwd.clone(), args.mcp_servers, true)
                 .await?;
+            if self
+                .closed_session_ids
+                .lock()
+                .await
+                .contains(&session_id_str)
+            {
+                return Err(closed_session_load_error(&session_id_str));
+            }
 
             let replay_tool_requests = replay_conversation_to_client(cx, &session)?;
+            cx.send_notification(GooseAcpAgent::conversation_cursor_notification(
+                &session_id_str,
+                session.conversation_revision,
+            ))?;
             let (agent, extension_results) = self.prepare_acp_session_agent(cx, &session).await?;
+            if self
+                .closed_session_ids
+                .lock()
+                .await
+                .contains(&session_id_str)
+            {
+                return Err(closed_session_load_error(&session_id_str));
+            }
             self.apply_session_recipe(&agent, &session).await?;
+            if self
+                .closed_session_ids
+                .lock()
+                .await
+                .contains(&session_id_str)
+            {
+                return Err(closed_session_load_error(&session_id_str));
+            }
             self.register_acp_session(session_id_str.clone(), agent.clone(), replay_tool_requests)
                 .await;
+
+            if self
+                .closed_session_ids
+                .lock()
+                .await
+                .contains(&session_id_str)
+            {
+                self.sessions.lock().await.remove(&session_id_str);
+                return Err(closed_session_load_error(&session_id_str));
+            }
 
             session = self
                 .session_manager
@@ -231,7 +297,6 @@ impl GooseAcpAgent {
                 ms = t_start.elapsed().as_millis() as u64,
                 "perf: load_session_refactor done"
             );
-            self.closed_session_ids.lock().await.remove(&session_id_str);
             Ok(response)
         }
         .await;

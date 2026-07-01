@@ -1,3 +1,4 @@
+use crate::acp::server::{broadcast_session_notification, AcpSessionNotificationEvent};
 use crate::acp::tools::AcpAwareToolMeta;
 use crate::agents::mcp_client::{Error as McpError, McpClientTrait};
 use crate::agents::platform_extensions::developer::edit::{
@@ -20,6 +21,7 @@ use schemars::schema_for;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::broadcast;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
@@ -64,6 +66,8 @@ pub(crate) struct AcpTools {
     pub(crate) inner: Arc<dyn McpClientTrait>,
     pub(crate) cx: ConnectionTo<Client>,
     pub(crate) session_id: SessionId,
+    pub(crate) session_event_tx: broadcast::Sender<AcpSessionNotificationEvent>,
+    pub(crate) session_event_source_id: String,
     pub(crate) fs_read: bool,
     pub(crate) fs_write: bool,
     pub(crate) terminal: bool,
@@ -95,16 +99,22 @@ fn read_tool() -> Tool {
 impl AcpTools {
     fn update_tool_call(&self, ctx: &crate::agents::ToolCallContext, fields: ToolCallUpdateFields) {
         if let Some(ref req_id) = ctx.tool_call_request_id {
+            let notification = SessionNotification::new(
+                self.session_id.clone(),
+                SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                    ToolCallId::new(req_id.clone()),
+                    fields,
+                )),
+            );
             let _ = self
                 .cx
-                .send_notification(SessionNotification::new(
-                    self.session_id.clone(),
-                    SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
-                        ToolCallId::new(req_id.clone()),
-                        fields,
-                    )),
-                ))
+                .send_notification(notification.clone())
                 .inspect_err(|e| tracing::error!("error updating tool call with client: {}", e));
+            broadcast_session_notification(
+                &self.session_event_tx,
+                self.session_event_source_id.clone(),
+                notification,
+            );
         }
     }
 

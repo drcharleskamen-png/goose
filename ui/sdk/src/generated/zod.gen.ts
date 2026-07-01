@@ -1952,6 +1952,697 @@ export const zGetSessionInfoResponse_unstable = z.object({
 });
 
 /**
+ * Fetch persisted conversation updates after a message-count cursor.
+ */
+export const zFetchSessionConversationRequest_unstable = z.object({
+    sessionId: z.string(),
+    cursor: z.number().int().gte(0).optional().default(0)
+});
+
+/**
+ * Unique identifier for a message within a session.
+ */
+export const zMessageId = z.string();
+
+/**
+ * A streamed item of content
+ */
+export const zContentChunk = z.object({
+    content: zContentBlock,
+    messageId: z.union([
+        zMessageId,
+        z.null()
+    ]).optional(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Unique identifier for a tool call within a session.
+ */
+export const zToolCallId = z.string();
+
+/**
+ * Categories of tools that can be invoked.
+ *
+ * Tool kinds help clients choose appropriate icons and optimize how they
+ * display tool execution progress.
+ *
+ * See protocol docs: [Creating](https://agentclientprotocol.com/protocol/tool-calls#creating)
+ */
+export const zToolKind = z.union([
+    z.literal('read'),
+    z.literal('edit'),
+    z.literal('delete'),
+    z.literal('move'),
+    z.literal('search'),
+    z.literal('execute'),
+    z.literal('think'),
+    z.literal('fetch'),
+    z.literal('switch_mode'),
+    z.literal('other')
+]);
+
+/**
+ * Execution status of a tool call.
+ *
+ * Tool calls progress through different statuses during their lifecycle.
+ *
+ * See protocol docs: [Status](https://agentclientprotocol.com/protocol/tool-calls#status)
+ */
+export const zToolCallStatus = z.union([
+    z.literal('pending'),
+    z.literal('in_progress'),
+    z.literal('completed'),
+    z.literal('failed')
+]);
+
+/**
+ * Standard content block (text, images, resources).
+ */
+export const zContent = z.object({
+    content: zContentBlock,
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * A diff representing file modifications.
+ *
+ * Shows changes to files in a format suitable for display in the client UI.
+ *
+ * See protocol docs: [Content](https://agentclientprotocol.com/protocol/tool-calls#content)
+ */
+export const zDiff = z.object({
+    path: z.string(),
+    oldText: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    newText: z.string(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Typed identifier used for terminal values on the wire.
+ */
+export const zTerminalId = z.string();
+
+/**
+ * Embed a terminal created with `terminal/create` by its id.
+ *
+ * The terminal must be added before calling `terminal/release`.
+ *
+ * See protocol docs: [Terminal](https://agentclientprotocol.com/protocol/terminals)
+ */
+export const zTerminal = z.object({
+    terminalId: zTerminalId,
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Content produced by a tool call.
+ *
+ * Tool calls can produce different types of content including
+ * standard content blocks (text, images) or file diffs.
+ *
+ * See protocol docs: [Content](https://agentclientprotocol.com/protocol/tool-calls#content)
+ */
+export const zToolCallContent = z.union([
+    z.object({
+        type: z.literal('Content')
+    }).and(zContent),
+    z.object({
+        type: z.literal('Diff')
+    }).and(zDiff),
+    z.object({
+        type: z.literal('Terminal')
+    }).and(zTerminal)
+]);
+
+/**
+ * A file location being accessed or modified by a tool.
+ *
+ * Enables clients to implement "follow-along" features that track
+ * which files the agent is working with in real-time.
+ *
+ * See protocol docs: [Following the Agent](https://agentclientprotocol.com/protocol/tool-calls#following-the-agent)
+ */
+export const zToolCallLocation = z.object({
+    path: z.string(),
+    line: z.union([
+        z.number().int().gte(0),
+        z.null()
+    ]).optional(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Represents a tool call that the language model has requested.
+ *
+ * Tool calls are actions that the agent executes on behalf of the language model,
+ * such as reading files, executing code, or fetching data from external sources.
+ *
+ * See protocol docs: [Tool Calls](https://agentclientprotocol.com/protocol/tool-calls)
+ */
+export const zToolCall = z.object({
+    toolCallId: zToolCallId,
+    title: z.string(),
+    kind: zToolKind.optional(),
+    status: zToolCallStatus.optional(),
+    content: z.array(zToolCallContent).optional(),
+    locations: z.array(zToolCallLocation).optional(),
+    rawInput: z.unknown().optional(),
+    rawOutput: z.unknown().optional(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * An update to an existing tool call.
+ *
+ * Used to report progress and results as tools execute. All fields except
+ * the tool call ID are optional - only changed fields need to be included.
+ *
+ * See protocol docs: [Updating](https://agentclientprotocol.com/protocol/tool-calls#updating)
+ */
+export const zToolCallUpdate = z.object({
+    toolCallId: zToolCallId,
+    kind: z.union([
+        zToolKind,
+        z.null()
+    ]).optional(),
+    status: z.union([
+        zToolCallStatus,
+        z.null()
+    ]).optional(),
+    title: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    content: z.union([
+        z.array(zToolCallContent),
+        z.null()
+    ]).optional(),
+    locations: z.union([
+        z.array(zToolCallLocation),
+        z.null()
+    ]).optional(),
+    rawInput: z.unknown().optional(),
+    rawOutput: z.unknown().optional(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Priority levels for plan entries.
+ *
+ * Used to indicate the relative importance or urgency of different
+ * tasks in the execution plan.
+ * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)
+ */
+export const zPlanEntryPriority = z.union([
+    z.literal('high'),
+    z.literal('medium'),
+    z.literal('low')
+]);
+
+/**
+ * Status of a plan entry in the execution flow.
+ *
+ * Tracks the lifecycle of each task from planning through completion.
+ * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)
+ */
+export const zPlanEntryStatus = z.union([
+    z.literal('pending'),
+    z.literal('in_progress'),
+    z.literal('completed')
+]);
+
+/**
+ * A single entry in the execution plan.
+ *
+ * Represents a task or goal that the assistant intends to accomplish
+ * as part of fulfilling the user's request.
+ * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)
+ */
+export const zPlanEntry = z.object({
+    content: z.string(),
+    priority: zPlanEntryPriority,
+    status: zPlanEntryStatus,
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * An execution plan for accomplishing complex tasks.
+ *
+ * Plans consist of multiple entries representing individual tasks or goals.
+ * Agents report plans to clients to provide visibility into their execution strategy.
+ * Plans can evolve during execution as the agent discovers new requirements or completes tasks.
+ *
+ * See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan)
+ */
+export const zPlan = z.object({
+    entries: z.array(zPlanEntry),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Unique identifier for a plan within a session.
+ */
+export const zPlanId = z.string();
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A plan represented as structured entries.
+ */
+export const zPlanItems = z.object({
+    id: zPlanId,
+    entries: z.array(zPlanEntry),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A plan represented by a file URI.
+ */
+export const zPlanFile = z.object({
+    id: zPlanId,
+    uri: z.string(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A plan represented as raw markdown content.
+ */
+export const zPlanMarkdown = z.object({
+    id: zPlanId,
+    content: z.string(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Updated content for a plan.
+ */
+export const zPlanUpdateContent = z.union([
+    z.object({
+        type: z.literal('PlanItems')
+    }).and(zPlanItems),
+    z.object({
+        type: z.literal('PlanFile')
+    }).and(zPlanFile),
+    z.object({
+        type: z.literal('PlanMarkdown')
+    }).and(zPlanMarkdown)
+]);
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A content update for a plan identified by ID.
+ */
+export const zPlanUpdate = z.object({
+    plan: zPlanUpdateContent,
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Removal notice for a plan identified by ID.
+ */
+export const zPlanRemoved = z.object({
+    id: zPlanId,
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * All text that was typed after the command name is provided as input.
+ */
+export const zUnstructuredCommandInput = z.object({
+    hint: z.string(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * All text that was typed after the command name is provided as input.
+ */
+export const zAvailableCommandInput = zUnstructuredCommandInput;
+
+/**
+ * Information about a command.
+ */
+export const zAvailableCommand = z.object({
+    name: z.string(),
+    description: z.string(),
+    input: z.union([
+        zAvailableCommandInput,
+        z.null()
+    ]).optional(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Available commands are ready or have changed
+ */
+export const zAvailableCommandsUpdate = z.object({
+    availableCommands: z.array(zAvailableCommand),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Unique identifier for a Session Mode.
+ */
+export const zSessionModeId = z.string();
+
+/**
+ * The current mode of the session has changed
+ *
+ * See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
+ */
+export const zCurrentModeUpdate = z.object({
+    currentModeId: zSessionModeId,
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Unique identifier for a session configuration option.
+ */
+export const zSessionConfigId = z.string();
+
+/**
+ * Semantic category for a session configuration option.
+ *
+ * This is intended to help Clients distinguish broadly common selectors (e.g. model selector vs
+ * session mode selector vs thought/reasoning level) for UX purposes (keyboard shortcuts, icons,
+ * placement). It MUST NOT be required for correctness. Clients MUST handle missing or unknown
+ * categories gracefully.
+ *
+ * Category names beginning with `_` are free for custom use, like other ACP extension methods.
+ * Category names that do not begin with `_` are reserved for the ACP spec.
+ */
+export const zSessionConfigOptionCategory = z.union([
+    z.literal('mode'),
+    z.literal('model'),
+    z.literal('model_config'),
+    z.literal('thought_level'),
+    z.string()
+]);
+
+/**
+ * Unique identifier for a session configuration option value.
+ */
+export const zSessionConfigValueId = z.string();
+
+/**
+ * A possible value for a session configuration option.
+ */
+export const zSessionConfigSelectOption = z.object({
+    value: zSessionConfigValueId,
+    name: z.string(),
+    description: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Unique identifier for a session configuration option value group.
+ */
+export const zSessionConfigGroupId = z.string();
+
+/**
+ * A group of possible values for a session configuration option.
+ */
+export const zSessionConfigSelectGroup = z.object({
+    group: zSessionConfigGroupId,
+    name: z.string(),
+    options: z.array(zSessionConfigSelectOption),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Possible values for a session configuration option.
+ */
+export const zSessionConfigSelectOptions = z.union([
+    z.array(zSessionConfigSelectOption),
+    z.array(zSessionConfigSelectGroup)
+]);
+
+/**
+ * A single-value selector (dropdown) session configuration option payload.
+ */
+export const zSessionConfigSelect = z.object({
+    currentValue: zSessionConfigValueId,
+    options: zSessionConfigSelectOptions
+});
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A boolean on/off toggle session configuration option payload.
+ */
+export const zSessionConfigBoolean = z.object({
+    currentValue: z.boolean()
+});
+
+export const zSessionConfigOption = z.intersection(z.union([
+    z.object({
+        type: z.literal('SessionConfigSelect')
+    }).and(zSessionConfigSelect),
+    z.object({
+        type: z.literal('SessionConfigBoolean')
+    }).and(zSessionConfigBoolean)
+]), z.object({
+    id: zSessionConfigId,
+    name: z.string(),
+    description: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    category: z.union([
+        zSessionConfigOptionCategory,
+        z.null()
+    ]).optional(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+}));
+
+/**
+ * Session configuration options have been updated.
+ */
+export const zConfigOptionUpdate = z.object({
+    configOptions: z.array(zSessionConfigOption),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Update to session metadata. All fields are optional to support partial updates.
+ *
+ * Agents send this notification to update session information like title or custom metadata.
+ * This allows clients to display dynamic session names and track session state changes.
+ */
+export const zSessionInfoUpdate = z.object({
+    title: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    updatedAt: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Cost information for a session.
+ */
+export const zCost = z.object({
+    amount: z.number(),
+    currency: z.string(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Context window and cost update for a session.
+ */
+export const zUsageUpdate = z.object({
+    used: z.number().int().gte(0),
+    size: z.number().int().gte(0),
+    cost: z.union([
+        zCost,
+        z.null()
+    ]).optional(),
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+/**
+ * Different types of updates that can be sent during session processing.
+ *
+ * These updates provide real-time feedback about the agent's progress.
+ *
+ * See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
+ */
+export const zSessionUpdate = z.union([
+    z.object({
+        sessionUpdate: z.literal('ContentChunk')
+    }).and(zContentChunk),
+    z.object({
+        sessionUpdate: z.literal('ContentChunk')
+    }).and(zContentChunk),
+    z.object({
+        sessionUpdate: z.literal('ContentChunk')
+    }).and(zContentChunk),
+    z.object({
+        sessionUpdate: z.literal('ToolCall')
+    }).and(zToolCall),
+    z.object({
+        sessionUpdate: z.literal('ToolCallUpdate')
+    }).and(zToolCallUpdate),
+    z.object({
+        sessionUpdate: z.literal('Plan')
+    }).and(zPlan),
+    z.object({
+        sessionUpdate: z.literal('PlanUpdate')
+    }).and(zPlanUpdate),
+    z.object({
+        sessionUpdate: z.literal('PlanRemoved')
+    }).and(zPlanRemoved),
+    z.object({
+        sessionUpdate: z.literal('AvailableCommandsUpdate')
+    }).and(zAvailableCommandsUpdate),
+    z.object({
+        sessionUpdate: z.literal('CurrentModeUpdate')
+    }).and(zCurrentModeUpdate),
+    z.object({
+        sessionUpdate: z.literal('ConfigOptionUpdate')
+    }).and(zConfigOptionUpdate),
+    z.object({
+        sessionUpdate: z.literal('SessionInfoUpdate')
+    }).and(zSessionInfoUpdate),
+    z.object({
+        sessionUpdate: z.literal('UsageUpdate')
+    }).and(zUsageUpdate)
+]);
+
+/**
+ * Notification containing a session update from the agent.
+ *
+ * Used to stream real-time progress and results during prompt processing.
+ *
+ * See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
+ */
+export const zSessionNotification = z.object({
+    sessionId: zSessionId,
+    update: zSessionUpdate,
+    _meta: z.union([
+        z.record(z.unknown()),
+        z.null()
+    ]).optional()
+});
+
+export const zFetchSessionConversationResponse_unstable = z.object({
+    notifications: z.array(zSessionNotification),
+    nextCursor: z.number().int().gte(0),
+    reset: z.boolean().optional().default(false)
+});
+
+/**
  * Truncate a session conversation from the given message timestamp onward.
  */
 export const zTruncateSessionConversationRequest_unstable = z.object({
@@ -2120,38 +2811,6 @@ export const zListSlashCommandsRequest_unstable = z.object({
     ]).optional(),
     sessionId: z.union([
         z.string(),
-        z.null()
-    ]).optional()
-});
-
-/**
- * All text that was typed after the command name is provided as input.
- */
-export const zUnstructuredCommandInput = z.object({
-    hint: z.string(),
-    _meta: z.union([
-        z.record(z.unknown()),
-        z.null()
-    ]).optional()
-});
-
-/**
- * All text that was typed after the command name is provided as input.
- */
-export const zAvailableCommandInput = zUnstructuredCommandInput;
-
-/**
- * Information about a command.
- */
-export const zAvailableCommand = z.object({
-    name: z.string(),
-    description: z.string(),
-    input: z.union([
-        zAvailableCommandInput,
-        z.null()
-    ]).optional(),
-    _meta: z.union([
-        z.record(z.unknown()),
         z.null()
     ]).optional()
 });
@@ -2819,6 +3478,7 @@ export const zExtRequest = z.object({
             zKillRunningJobRequest_unstable,
             zInspectRunningJobRequest_unstable,
             zGetSessionInfoRequest_unstable,
+            zFetchSessionConversationRequest_unstable,
             zTruncateSessionConversationRequest_unstable,
             zUpdateSessionProjectRequest_unstable,
             zRenameSessionRequest_unstable,
@@ -2920,6 +3580,7 @@ export const zExtResponse = z.union([
                 zKillRunningJobResponse_unstable,
                 zInspectRunningJobResponse_unstable,
                 zGetSessionInfoResponse_unstable,
+                zFetchSessionConversationResponse_unstable,
                 zCreateSourceResponse_unstable,
                 zListSourcesResponse_unstable,
                 zListAgentMentionsResponse_unstable,

@@ -15,6 +15,14 @@ impl GooseAcpAgent {
             .add_extension(config, session_id)
             .await
             .internal_err()?;
+        self.send_and_publish_session_invalidation_to_client(
+            session_id,
+            &[
+                AcpSessionInvalidation::Config,
+                AcpSessionInvalidation::ExtensionData,
+            ],
+        )
+        .await?;
         Ok(EmptyResponse {})
     }
 
@@ -28,6 +36,14 @@ impl GooseAcpAgent {
             .remove_extension(&req.name, session_id)
             .await
             .internal_err()?;
+        self.send_and_publish_session_invalidation_to_client(
+            session_id,
+            &[
+                AcpSessionInvalidation::Config,
+                AcpSessionInvalidation::ExtensionData,
+            ],
+        )
+        .await?;
         Ok(EmptyResponse {})
     }
 

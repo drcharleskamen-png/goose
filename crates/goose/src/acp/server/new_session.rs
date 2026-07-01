@@ -84,13 +84,29 @@ impl GooseAcpAgent {
         let response = self
             .build_new_session_response(&reloaded_session, &extension_results)
             .await?;
-        self.send_and_publish_session_notification(
-            cx,
-            Self::session_info_notification(&reloaded_session),
-        )
-        .await?;
-        self.send_and_publish_session_setup_notifications(cx, &reloaded_session)
-            .await?;
+        if let Err(error) = self
+            .send_and_publish_session_notification(
+                cx,
+                Self::session_info_notification(&reloaded_session),
+            )
+            .await
+        {
+            warn!(
+                session_id = %reloaded_session.id,
+                error = %error,
+                "failed to send new session info notification"
+            );
+        }
+        if let Err(error) = self
+            .send_and_publish_session_setup_notifications(cx, &reloaded_session)
+            .await
+        {
+            warn!(
+                session_id = %reloaded_session.id,
+                error = %error,
+                "failed to send new session setup notifications"
+            );
+        }
         Ok(response)
     }
 

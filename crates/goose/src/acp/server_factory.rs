@@ -1,11 +1,14 @@
-use crate::acp::server::{AcpProviderFactory, GooseAcpAgent, GooseAcpAgentOptions};
+use crate::acp::server::{
+    AcpProviderFactory, AcpSessionNotificationEvent, GooseAcpAgent, GooseAcpAgentOptions,
+    SESSION_EVENT_CHANNEL_CAPACITY,
+};
 use crate::agents::GoosePlatform;
 use crate::scheduler_trait::SchedulerTrait;
 use crate::session::SessionManager;
 use crate::source_roots::SourceRoot;
 use anyhow::Result;
 use std::sync::Arc;
-use tokio::sync::OnceCell;
+use tokio::sync::{broadcast, OnceCell};
 use tracing::info;
 
 pub struct AcpServerFactoryConfig {
@@ -23,13 +26,16 @@ pub struct AcpServerFactoryConfig {
 pub struct AcpServer {
     config: AcpServerFactoryConfig,
     scheduler: OnceCell<Arc<dyn SchedulerTrait>>,
+    session_event_tx: broadcast::Sender<AcpSessionNotificationEvent>,
 }
 
 impl AcpServer {
     pub fn new(config: AcpServerFactoryConfig) -> Self {
+        let (session_event_tx, _) = broadcast::channel(SESSION_EVENT_CHANNEL_CAPACITY);
         Self {
             config,
             scheduler: OnceCell::new(),
+            session_event_tx,
         }
     }
 
@@ -84,6 +90,7 @@ impl AcpServer {
             goose_platform: self.config.goose_platform.clone(),
             additional_source_roots: self.config.additional_source_roots.clone(),
             scheduler,
+            session_event_tx: self.session_event_tx.clone(),
         })
         .await?;
         info!("Created new ACP agent");

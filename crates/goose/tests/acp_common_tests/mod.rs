@@ -84,6 +84,10 @@ pub async fn run_list_sessions<C: Connection>() {
         "messageCount".to_string(),
         serde_json::Value::Number(2.into()),
     );
+    expected_meta.insert(
+        "conversationCursor".to_string(),
+        serde_json::Value::Number(2.into()),
+    );
     expected_meta.insert("userSetName".to_string(), serde_json::Value::Bool(false));
     expected_meta.insert(
         "sessionType".to_string(),
@@ -136,10 +140,15 @@ pub async fn run_session_name_update_notification<C: Connection>() {
 
     let mut notifications = session.notifications();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
-    while !notifications
-        .iter()
-        .any(|n| matches!(n, Notification::SessionInfoUpdate { .. }))
-        && tokio::time::Instant::now() < deadline
+    while !notifications.iter().any(|n| {
+        matches!(
+            n,
+            Notification::SessionInfoUpdate {
+                title: Some(title),
+                ..
+            } if title == "Generated Test Title"
+        )
+    }) && tokio::time::Instant::now() < deadline
     {
         tokio::time::sleep(Duration::from_millis(10)).await;
         notifications.extend(session.notifications());
@@ -149,18 +158,19 @@ pub async fn run_session_name_update_notification<C: Connection>() {
         .iter()
         .find_map(|notification| match notification {
             Notification::SessionInfoUpdate {
-                title,
+                title: Some(title),
                 updated_at,
                 message_count,
                 user_set_name,
-            } => Some((title, updated_at, message_count, user_set_name)),
+            } if title == "Generated Test Title" => {
+                Some((updated_at, message_count, user_set_name))
+            }
             _ => None,
         })
         .expect("expected generated session name notification");
-    assert_eq!(update.0.as_deref(), Some("Generated Test Title"));
-    assert!(update.1.is_some());
-    assert!(update.2.unwrap_or_default() >= 1);
-    assert_eq!(*update.3, Some(false));
+    assert!(update.0.is_some());
+    assert!(update.1.unwrap_or_default() >= 1);
+    assert_eq!(*update.2, Some(false));
 }
 
 pub async fn run_close_session<C: Connection>() {
@@ -1001,6 +1011,18 @@ async fn run_model_set_impl<C: Connection>() {
     let prompt_notifs = session_b.notifications();
     let mut all = set_model_notifs;
     all.extend(prompt_notifs);
+    all.retain(|notification| {
+        !matches!(
+            notification,
+            Notification::UserMessage
+                | Notification::SessionInfoUpdate {
+                    title: None,
+                    message_count: None,
+                    user_set_name: None,
+                    ..
+                }
+        )
+    });
     assert!(
         all == vec![Notification::AgentMessage]
             || all == vec![Notification::ConfigOption, Notification::AgentMessage],

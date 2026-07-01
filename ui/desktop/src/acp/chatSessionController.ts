@@ -5,11 +5,7 @@ import { ChatState } from '../types/chatState';
 import type { Session } from '../types/session';
 import { errorMessage } from '../utils/conversionUtils';
 import { showExtensionLoadResults } from '../utils/extensionErrorUtils';
-import {
-  createUserMessage,
-  getPendingToolConfirmationIds,
-  type Message,
-} from '../types/message';
+import { createUserMessage, getPendingToolConfirmationIds, type Message } from '../types/message';
 import {
   acpChatSessionActions,
   acpChatSessionStore,
@@ -87,6 +83,10 @@ function assertNoPendingPromptCancellation(sessionId: string): void {
   }
 }
 
+function hasActiveRun(snapshot: AcpChatSessionSnapshot | undefined): boolean {
+  return snapshot?.activeRunId !== null && snapshot?.activeRunId !== undefined;
+}
+
 async function forkSessionWithEditedMessage(
   sessionId: string,
   message: Message,
@@ -158,7 +158,7 @@ async function submitMessage(
   assertNoPendingPromptCancellation(sessionId);
 
   const snapshot = acpChatSessionStore.getSnapshot(sessionId);
-  if (snapshot?.activePromptAttemptId) {
+  if (snapshot?.activePromptAttemptId || hasActiveRun(snapshot)) {
     return;
   }
 
@@ -250,7 +250,7 @@ async function updateMessage(
   const isPendingToolPermission =
     editSnapshot?.chatState === ChatState.WaitingForUserInput &&
     getPendingToolConfirmationIds(editSnapshot?.messages ?? []).size > 0;
-  const isIdle = editSnapshot?.chatState === ChatState.Idle;
+  const isIdle = editSnapshot?.chatState === ChatState.Idle && !hasActiveRun(editSnapshot);
   const pendingToolPermissionPromptAttemptId = isPendingToolPermission
     ? activePromptAttemptId
     : undefined;

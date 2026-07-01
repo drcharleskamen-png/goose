@@ -266,6 +266,12 @@ pub enum AgentEvent {
     Usage(crate::providers::base::ProviderUsage),
     McpNotification((String, ServerNotification)),
     HistoryReplaced(Conversation),
+    SessionInvalidated(AgentSessionInvalidation),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentSessionInvalidation {
+    ExtensionData,
 }
 
 impl Default for Agent {
@@ -2254,6 +2260,10 @@ impl Agent {
                                     if all_install_successful && !enable_extension_request_ids.is_empty() {
                                         if let Err(e) = self.save_extension_state(&session_config).await {
                                             warn!("Failed to save extension state after runtime changes: {}", e);
+                                        } else {
+                                            yield AgentEvent::SessionInvalidated(
+                                                AgentSessionInvalidation::ExtensionData,
+                                            );
                                         }
                                         tools_updated = true;
                                     }
@@ -2619,6 +2629,7 @@ impl Agent {
 
                 if let Some(task) = tool_pair_summarization_task {
                     tool_pair_summarization_done = true;
+                    let mut summarized_tool_pairs = false;
                     if let Ok(summaries) = task.await {
                         for (summary_msg, tool_id) in summaries {
                             let matching_ids: Vec<String> = conversation.messages()
@@ -2640,11 +2651,21 @@ impl Agent {
                                     }).await?;
                                 }
                                 session_manager.add_message(&session_config.id, &summary_msg).await?;
+                                summarized_tool_pairs = true;
                             } else {
                                 warn!("Expected a tool request/reply pair, but found {} matching messages",
                                     matching_ids.len());
                             }
                         }
+                    }
+                    if summarized_tool_pairs {
+                        let updated_session = session_manager
+                            .get_session(&session_config.id, true)
+                            .await?;
+                        conversation = updated_session
+                            .conversation
+                            .ok_or_else(|| anyhow::anyhow!("Session has no conversation after tool pair summarization"))?;
+                        yield AgentEvent::HistoryReplaced(conversation.clone());
                     }
                 }
 
@@ -3751,6 +3772,7 @@ echo start >> "$PLUGIN_ROOT/hook.log"
                 AgentEvent::Message(message) => messages.push(message),
                 AgentEvent::McpNotification(_)
                 | AgentEvent::HistoryReplaced(_)
+                | AgentEvent::SessionInvalidated(_)
                 | AgentEvent::Usage(_) => {}
             }
         }

@@ -1873,6 +1873,960 @@ export type GetSessionInfoResponse_unstable = {
 };
 
 /**
+ * Fetch persisted conversation updates after a message-count cursor.
+ */
+export type FetchSessionConversationRequest_unstable = {
+    sessionId: string;
+    cursor?: number;
+};
+
+export type FetchSessionConversationResponse_unstable = {
+    notifications: Array<SessionNotification>;
+    nextCursor: number;
+    reset?: boolean;
+};
+
+/**
+ * Notification containing a session update from the agent.
+ *
+ * Used to stream real-time progress and results during prompt processing.
+ *
+ * See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
+ */
+export type SessionNotification = {
+    /**
+     * The ID of the session this update pertains to.
+     */
+    sessionId: SessionId;
+    /**
+     * The actual update content.
+     */
+    update: SessionUpdate;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Different types of updates that can be sent during session processing.
+ *
+ * These updates provide real-time feedback about the agent's progress.
+ *
+ * See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
+ */
+export type SessionUpdate = ({
+    sessionUpdate: 'ContentChunk';
+} & ContentChunk) | ({
+    sessionUpdate: 'ContentChunk';
+} & ContentChunk) | ({
+    sessionUpdate: 'ContentChunk';
+} & ContentChunk) | ({
+    sessionUpdate: 'ToolCall';
+} & ToolCall) | ({
+    sessionUpdate: 'ToolCallUpdate';
+} & ToolCallUpdate) | ({
+    sessionUpdate: 'Plan';
+} & Plan) | ({
+    sessionUpdate: 'PlanUpdate';
+} & PlanUpdate) | ({
+    sessionUpdate: 'PlanRemoved';
+} & PlanRemoved) | ({
+    sessionUpdate: 'AvailableCommandsUpdate';
+} & AvailableCommandsUpdate) | ({
+    sessionUpdate: 'CurrentModeUpdate';
+} & CurrentModeUpdate) | ({
+    sessionUpdate: 'ConfigOptionUpdate';
+} & ConfigOptionUpdate) | ({
+    sessionUpdate: 'SessionInfoUpdate';
+} & SessionInfoUpdate) | ({
+    sessionUpdate: 'UsageUpdate';
+} & UsageUpdate);
+
+/**
+ * Unique identifier for a message within a session.
+ */
+export type MessageId = string;
+
+/**
+ * A streamed item of content
+ */
+export type ContentChunk = {
+    /**
+     * A single item of content
+     */
+    content: ContentBlock;
+    /**
+     * A unique identifier for the message this chunk belongs to.
+     *
+     * All chunks belonging to the same message share the same `messageId`.
+     * A change in `messageId` indicates a new message has started.
+     */
+    messageId?: MessageId | null;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Unique identifier for a tool call within a session.
+ */
+export type ToolCallId = string;
+
+/**
+ * Categories of tools that can be invoked.
+ *
+ * Tool kinds help clients choose appropriate icons and optimize how they
+ * display tool execution progress.
+ *
+ * See protocol docs: [Creating](https://agentclientprotocol.com/protocol/tool-calls#creating)
+ */
+export type ToolKind = 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'think' | 'fetch' | 'switch_mode' | 'other';
+
+/**
+ * Execution status of a tool call.
+ *
+ * Tool calls progress through different statuses during their lifecycle.
+ *
+ * See protocol docs: [Status](https://agentclientprotocol.com/protocol/tool-calls#status)
+ */
+export type ToolCallStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+
+/**
+ * Content produced by a tool call.
+ *
+ * Tool calls can produce different types of content including
+ * standard content blocks (text, images) or file diffs.
+ *
+ * See protocol docs: [Content](https://agentclientprotocol.com/protocol/tool-calls#content)
+ */
+export type ToolCallContent = ({
+    type: 'Content';
+} & Content) | ({
+    type: 'Diff';
+} & Diff) | ({
+    type: 'Terminal';
+} & Terminal);
+
+/**
+ * Standard content block (text, images, resources).
+ */
+export type Content = {
+    /**
+     * The actual content block.
+     */
+    content: ContentBlock;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * A diff representing file modifications.
+ *
+ * Shows changes to files in a format suitable for display in the client UI.
+ *
+ * See protocol docs: [Content](https://agentclientprotocol.com/protocol/tool-calls#content)
+ */
+export type Diff = {
+    /**
+     * The file path being modified.
+     */
+    path: string;
+    /**
+     * The original content (None for new files).
+     */
+    oldText?: string | null;
+    /**
+     * The new content after modification.
+     */
+    newText: string;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Typed identifier used for terminal values on the wire.
+ */
+export type TerminalId = string;
+
+/**
+ * Embed a terminal created with `terminal/create` by its id.
+ *
+ * The terminal must be added before calling `terminal/release`.
+ *
+ * See protocol docs: [Terminal](https://agentclientprotocol.com/protocol/terminals)
+ */
+export type Terminal = {
+    /**
+     * Identifier of the terminal instance to embed in the content stream.
+     */
+    terminalId: TerminalId;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * A file location being accessed or modified by a tool.
+ *
+ * Enables clients to implement "follow-along" features that track
+ * which files the agent is working with in real-time.
+ *
+ * See protocol docs: [Following the Agent](https://agentclientprotocol.com/protocol/tool-calls#following-the-agent)
+ */
+export type ToolCallLocation = {
+    /**
+     * The file path being accessed or modified.
+     */
+    path: string;
+    /**
+     * Optional line number within the file.
+     */
+    line?: number | null;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Represents a tool call that the language model has requested.
+ *
+ * Tool calls are actions that the agent executes on behalf of the language model,
+ * such as reading files, executing code, or fetching data from external sources.
+ *
+ * See protocol docs: [Tool Calls](https://agentclientprotocol.com/protocol/tool-calls)
+ */
+export type ToolCall = {
+    /**
+     * Unique identifier for this tool call within the session.
+     */
+    toolCallId: ToolCallId;
+    /**
+     * Human-readable title describing what the tool is doing.
+     */
+    title: string;
+    /**
+     * The category of tool being invoked.
+     * Helps clients choose appropriate icons and UI treatment.
+     */
+    kind?: ToolKind;
+    /**
+     * Current execution status of the tool call.
+     */
+    status?: ToolCallStatus;
+    /**
+     * Content produced by the tool call.
+     */
+    content?: Array<ToolCallContent>;
+    /**
+     * File locations affected by this tool call.
+     * Enables "follow-along" features in clients.
+     */
+    locations?: Array<ToolCallLocation>;
+    /**
+     * Raw input parameters sent to the tool.
+     */
+    rawInput?: unknown;
+    /**
+     * Raw output returned by the tool.
+     */
+    rawOutput?: unknown;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * An update to an existing tool call.
+ *
+ * Used to report progress and results as tools execute. All fields except
+ * the tool call ID are optional - only changed fields need to be included.
+ *
+ * See protocol docs: [Updating](https://agentclientprotocol.com/protocol/tool-calls#updating)
+ */
+export type ToolCallUpdate = {
+    /**
+     * The ID of the tool call being updated.
+     */
+    toolCallId: ToolCallId;
+    /**
+     * Update the tool kind.
+     */
+    kind?: ToolKind | null;
+    /**
+     * Update the execution status.
+     */
+    status?: ToolCallStatus | null;
+    /**
+     * Update the human-readable title.
+     */
+    title?: string | null;
+    /**
+     * Replace the content collection.
+     */
+    content?: Array<ToolCallContent> | null;
+    /**
+     * Replace the locations collection.
+     */
+    locations?: Array<ToolCallLocation> | null;
+    /**
+     * Update the raw input.
+     */
+    rawInput?: unknown;
+    /**
+     * Update the raw output.
+     */
+    rawOutput?: unknown;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * A single entry in the execution plan.
+ *
+ * Represents a task or goal that the assistant intends to accomplish
+ * as part of fulfilling the user's request.
+ * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)
+ */
+export type PlanEntry = {
+    /**
+     * Human-readable description of what this task aims to accomplish.
+     */
+    content: string;
+    /**
+     * The relative importance of this task.
+     * Used to indicate which tasks are most critical to the overall goal.
+     */
+    priority: PlanEntryPriority;
+    /**
+     * Current execution status of this task.
+     */
+    status: PlanEntryStatus;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Priority levels for plan entries.
+ *
+ * Used to indicate the relative importance or urgency of different
+ * tasks in the execution plan.
+ * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)
+ */
+export type PlanEntryPriority = 'high' | 'medium' | 'low';
+
+/**
+ * Status of a plan entry in the execution flow.
+ *
+ * Tracks the lifecycle of each task from planning through completion.
+ * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)
+ */
+export type PlanEntryStatus = 'pending' | 'in_progress' | 'completed';
+
+/**
+ * An execution plan for accomplishing complex tasks.
+ *
+ * Plans consist of multiple entries representing individual tasks or goals.
+ * Agents report plans to clients to provide visibility into their execution strategy.
+ * Plans can evolve during execution as the agent discovers new requirements or completes tasks.
+ *
+ * See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan)
+ */
+export type Plan = {
+    /**
+     * The list of tasks to be accomplished.
+     *
+     * When updating a plan, the agent must send a complete list of all entries
+     * with their current status. The client replaces the entire plan with each update.
+     */
+    entries: Array<PlanEntry>;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Updated content for a plan.
+ */
+export type PlanUpdateContent = ({
+    type: 'PlanItems';
+} & PlanItems) | ({
+    type: 'PlanFile';
+} & PlanFile) | ({
+    type: 'PlanMarkdown';
+} & PlanMarkdown);
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Unique identifier for a plan within a session.
+ */
+export type PlanId = string;
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A plan represented as structured entries.
+ */
+export type PlanItems = {
+    /**
+     * The plan ID to update.
+     */
+    id: PlanId;
+    /**
+     * The list of tasks to be accomplished.
+     *
+     * When updating an item-based plan, the agent must send a complete list of all entries
+     * with their current status. The client replaces that plan with each update.
+     */
+    entries: Array<PlanEntry>;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A plan represented by a file URI.
+ */
+export type PlanFile = {
+    /**
+     * The plan ID to update.
+     */
+    id: PlanId;
+    /**
+     * The URI of the file containing the plan.
+     */
+    uri: string;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A plan represented as raw markdown content.
+ */
+export type PlanMarkdown = {
+    /**
+     * The plan ID to update.
+     */
+    id: PlanId;
+    /**
+     * Markdown content for the plan.
+     */
+    content: string;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A content update for a plan identified by ID.
+ */
+export type PlanUpdate = {
+    /**
+     * The updated plan content.
+     */
+    plan: PlanUpdateContent;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Removal notice for a plan identified by ID.
+ */
+export type PlanRemoved = {
+    /**
+     * The plan ID to remove.
+     */
+    id: PlanId;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Information about a command.
+ */
+export type AvailableCommand = {
+    /**
+     * Command name (e.g., `create_plan`, `research_codebase`).
+     */
+    name: string;
+    /**
+     * Human-readable description of what the command does.
+     */
+    description: string;
+    /**
+     * Input for the command if required
+     */
+    input?: AvailableCommandInput | null;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * All text that was typed after the command name is provided as input.
+ */
+export type AvailableCommandInput = UnstructuredCommandInput;
+
+/**
+ * All text that was typed after the command name is provided as input.
+ */
+export type UnstructuredCommandInput = {
+    /**
+     * A hint to display when the input hasn't been provided yet
+     */
+    hint: string;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Available commands are ready or have changed
+ */
+export type AvailableCommandsUpdate = {
+    /**
+     * Commands the agent can execute
+     */
+    availableCommands: Array<AvailableCommand>;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Unique identifier for a Session Mode.
+ */
+export type SessionModeId = string;
+
+/**
+ * The current mode of the session has changed
+ *
+ * See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
+ */
+export type CurrentModeUpdate = {
+    /**
+     * The ID of the current mode
+     */
+    currentModeId: SessionModeId;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+export type SessionConfigOption = (({
+    type: 'SessionConfigSelect';
+} & SessionConfigSelect) | ({
+    type: 'SessionConfigBoolean';
+} & SessionConfigBoolean)) & {
+    /**
+     * Unique identifier for the configuration option.
+     */
+    id: SessionConfigId;
+    /**
+     * Human-readable label for the option.
+     */
+    name: string;
+    /**
+     * Optional description for the Client to display to the user.
+     */
+    description?: string | null;
+    /**
+     * Optional semantic category for this option (UX only).
+     */
+    category?: SessionConfigOptionCategory | null;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Unique identifier for a session configuration option.
+ */
+export type SessionConfigId = string;
+
+/**
+ * Semantic category for a session configuration option.
+ *
+ * This is intended to help Clients distinguish broadly common selectors (e.g. model selector vs
+ * session mode selector vs thought/reasoning level) for UX purposes (keyboard shortcuts, icons,
+ * placement). It MUST NOT be required for correctness. Clients MUST handle missing or unknown
+ * categories gracefully.
+ *
+ * Category names beginning with `_` are free for custom use, like other ACP extension methods.
+ * Category names that do not begin with `_` are reserved for the ACP spec.
+ */
+export type SessionConfigOptionCategory = 'mode' | 'model' | 'model_config' | 'thought_level' | string;
+
+/**
+ * Unique identifier for a session configuration option value.
+ */
+export type SessionConfigValueId = string;
+
+/**
+ * Possible values for a session configuration option.
+ */
+export type SessionConfigSelectOptions = Array<SessionConfigSelectOption> | Array<SessionConfigSelectGroup>;
+
+/**
+ * A possible value for a session configuration option.
+ */
+export type SessionConfigSelectOption = {
+    /**
+     * Unique identifier for this option value.
+     */
+    value: SessionConfigValueId;
+    /**
+     * Human-readable label for this option value.
+     */
+    name: string;
+    /**
+     * Optional description for this option value.
+     */
+    description?: string | null;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * A group of possible values for a session configuration option.
+ */
+export type SessionConfigSelectGroup = {
+    /**
+     * Unique identifier for this group.
+     */
+    group: SessionConfigGroupId;
+    /**
+     * Human-readable label for this group.
+     */
+    name: string;
+    /**
+     * The set of option values in this group.
+     */
+    options: Array<SessionConfigSelectOption>;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Unique identifier for a session configuration option value group.
+ */
+export type SessionConfigGroupId = string;
+
+/**
+ * A single-value selector (dropdown) session configuration option payload.
+ */
+export type SessionConfigSelect = {
+    /**
+     * The currently selected value.
+     */
+    currentValue: SessionConfigValueId;
+    /**
+     * The set of selectable options.
+     */
+    options: SessionConfigSelectOptions;
+};
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A boolean on/off toggle session configuration option payload.
+ */
+export type SessionConfigBoolean = {
+    /**
+     * The current value of the boolean option.
+     */
+    currentValue: boolean;
+};
+
+/**
+ * Session configuration options have been updated.
+ */
+export type ConfigOptionUpdate = {
+    /**
+     * The full set of configuration options and their current values.
+     */
+    configOptions: Array<SessionConfigOption>;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Update to session metadata. All fields are optional to support partial updates.
+ *
+ * Agents send this notification to update session information like title or custom metadata.
+ * This allows clients to display dynamic session names and track session state changes.
+ */
+export type SessionInfoUpdate = {
+    /**
+     * Human-readable title for the session. Set to null to clear.
+     */
+    title?: string | null;
+    /**
+     * ISO 8601 timestamp of last activity. Set to null to clear.
+     */
+    updatedAt?: string | null;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Cost information for a session.
+ */
+export type Cost = {
+    /**
+     * Total cumulative cost for session.
+     */
+    amount: number;
+    /**
+     * ISO 4217 currency code (e.g., "USD", "EUR").
+     */
+    currency: string;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Context window and cost update for a session.
+ */
+export type UsageUpdate = {
+    /**
+     * Tokens currently in context.
+     */
+    used: number;
+    /**
+     * Total context window size in tokens.
+     */
+    size: number;
+    /**
+     * Cumulative session cost (optional).
+     */
+    cost?: Cost | null;
+    /**
+     * The _meta property is reserved by ACP to allow clients and agents to attach additional
+     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
+     * these keys.
+     *
+     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+     */
+    _meta?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
  * Truncate a session conversation from the given message timestamp onward.
  */
 export type TruncateSessionConversationRequest_unstable = {
@@ -2045,59 +2999,6 @@ export type ListSlashCommandsRequest_unstable = {
 
 export type ListSlashCommandsResponse_unstable = {
     availableCommands: Array<AvailableCommand>;
-};
-
-/**
- * Information about a command.
- */
-export type AvailableCommand = {
-    /**
-     * Command name (e.g., `create_plan`, `research_codebase`).
-     */
-    name: string;
-    /**
-     * Human-readable description of what the command does.
-     */
-    description: string;
-    /**
-     * Input for the command if required
-     */
-    input?: AvailableCommandInput | null;
-    /**
-     * The _meta property is reserved by ACP to allow clients and agents to attach additional
-     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
-     * these keys.
-     *
-     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-     */
-    _meta?: {
-        [key: string]: unknown;
-    } | null;
-};
-
-/**
- * All text that was typed after the command name is provided as input.
- */
-export type AvailableCommandInput = UnstructuredCommandInput;
-
-/**
- * All text that was typed after the command name is provided as input.
- */
-export type UnstructuredCommandInput = {
-    /**
-     * A hint to display when the input hasn't been provided yet
-     */
-    hint: string;
-    /**
-     * The _meta property is reserved by ACP to allow clients and agents to attach additional
-     * metadata to their interactions. Implementations MUST NOT make assumptions about values at
-     * these keys.
-     *
-     * See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-     */
-    _meta?: {
-        [key: string]: unknown;
-    } | null;
 };
 
 /**
@@ -2579,14 +3480,14 @@ export type RecipeParamsAction = 'submit' | 'cancel';
 export type ExtRequest = {
     id: string;
     method: string;
-    params?: AddSessionExtensionRequest_unstable | RemoveSessionExtensionRequest_unstable | GetToolsRequest_unstable | SetToolPermissionsRequest_unstable | GooseToolCallRequest_unstable | ReadResourceRequest_unstable | AppsListRequest_unstable | AppsExportRequest_unstable | AppsImportRequest_unstable | UpdateWorkingDirRequest_unstable | SetSessionSystemPromptRequest_unstable | SteerSessionRequest_unstable | DiagnosticsGetRequest_unstable | ListPromptsRequest_unstable | GetPromptRequest_unstable | SavePromptRequest_unstable | ResetPromptRequest_unstable | DeleteSessionRequest | GetConfigExtensionsRequest_unstable | GetAvailableExtensionsRequest_unstable | AddConfigExtensionRequest_unstable | RemoveConfigExtensionRequest_unstable | SetConfigExtensionEnabledRequest_unstable | GetSessionExtensionsRequest_unstable | ListProvidersRequest_unstable | ProviderSupportedModelsListRequest_unstable | ProviderCatalogListRequest_unstable | ProviderSetupCatalogListRequest_unstable | ProviderCatalogTemplateRequest_unstable | CustomProviderCreateRequest_unstable | CustomProviderReadRequest_unstable | CustomProviderUpdateRequest_unstable | CustomProviderDeleteRequest_unstable | RefreshProviderInventoryRequest_unstable | ProviderConfigReadRequest_unstable | ProviderConfigStatusRequest_unstable | ProviderConfigSaveRequest_unstable | ProviderConfigDeleteRequest_unstable | ProviderConfigAuthenticateRequest_unstable | ProviderSecretsListRequest_unstable | ProviderSecretDeleteRequest_unstable | CanonicalModelInfoRequest_unstable | PreferencesReadRequest_unstable | PreferencesSaveRequest_unstable | PreferencesRemoveRequest_unstable | ConfigReadRequest_unstable | ConfigUpsertRequest_unstable | ConfigRemoveRequest_unstable | ConfigReadAllRequest_unstable | DefaultsReadRequest_unstable | DefaultsSaveRequest_unstable | DefaultsClearRequest_unstable | OnboardingImportScanRequest_unstable | OnboardingImportApplyRequest_unstable | ExportSessionRequest_unstable | ImportSessionRequest_unstable | ShareSessionNostrRequest_unstable | EncodeRecipeRequest_unstable | DecodeRecipeRequest_unstable | ScanRecipeRequest_unstable | ListRecipesRequest_unstable | DeleteRecipeRequest_unstable | ScheduleRecipeRequest_unstable | SetRecipeSlashCommandRequest_unstable | SaveRecipeRequest_unstable | ParseRecipeRequest_unstable | RecipeToYamlRequest_unstable | ListSchedulesRequest_unstable | ListScheduleSessionsRequest_unstable | CreateScheduleRequest_unstable | DeleteScheduleRequest_unstable | PauseScheduleRequest_unstable | UnpauseScheduleRequest_unstable | UpdateScheduleRequest_unstable | RunScheduleNowRequest_unstable | KillRunningJobRequest_unstable | InspectRunningJobRequest_unstable | GetSessionInfoRequest_unstable | TruncateSessionConversationRequest_unstable | UpdateSessionProjectRequest_unstable | RenameSessionRequest_unstable | ArchiveSessionRequest_unstable | UnarchiveSessionRequest_unstable | CreateSourceRequest_unstable | ListSourcesRequest_unstable | ListAgentMentionsRequest_unstable | ListSlashCommandsRequest_unstable | UpdateSourceRequest_unstable | DeleteSourceRequest_unstable | ExportSourceRequest_unstable | ImportSourcesRequest_unstable | DictationTranscribeRequest_unstable | DictationConfigRequest_unstable | DictationSecretSaveRequest_unstable | DictationSecretDeleteRequest_unstable | DictationModelsListRequest_unstable | DictationModelDownloadRequest_unstable | DictationModelDownloadProgressRequest_unstable | DictationModelCancelRequest_unstable | DictationModelDeleteRequest_unstable | DictationModelSelectRequest_unstable | LocalInferenceModelsListRequest_unstable | LocalInferenceModelDownloadRequest_unstable | LocalInferenceModelDownloadProgressRequest_unstable | LocalInferenceModelDownloadCancelRequest_unstable | LocalInferenceModelDeleteRequest_unstable | LocalInferenceModelSettingsReadRequest_unstable | LocalInferenceModelSettingsUpdateRequest_unstable | LocalInferenceHuggingFaceSearchRequest_unstable | LocalInferenceHuggingFaceRepoVariantsRequest_unstable | LocalInferenceBuiltinChatTemplatesListRequest_unstable | {
+    params?: AddSessionExtensionRequest_unstable | RemoveSessionExtensionRequest_unstable | GetToolsRequest_unstable | SetToolPermissionsRequest_unstable | GooseToolCallRequest_unstable | ReadResourceRequest_unstable | AppsListRequest_unstable | AppsExportRequest_unstable | AppsImportRequest_unstable | UpdateWorkingDirRequest_unstable | SetSessionSystemPromptRequest_unstable | SteerSessionRequest_unstable | DiagnosticsGetRequest_unstable | ListPromptsRequest_unstable | GetPromptRequest_unstable | SavePromptRequest_unstable | ResetPromptRequest_unstable | DeleteSessionRequest | GetConfigExtensionsRequest_unstable | GetAvailableExtensionsRequest_unstable | AddConfigExtensionRequest_unstable | RemoveConfigExtensionRequest_unstable | SetConfigExtensionEnabledRequest_unstable | GetSessionExtensionsRequest_unstable | ListProvidersRequest_unstable | ProviderSupportedModelsListRequest_unstable | ProviderCatalogListRequest_unstable | ProviderSetupCatalogListRequest_unstable | ProviderCatalogTemplateRequest_unstable | CustomProviderCreateRequest_unstable | CustomProviderReadRequest_unstable | CustomProviderUpdateRequest_unstable | CustomProviderDeleteRequest_unstable | RefreshProviderInventoryRequest_unstable | ProviderConfigReadRequest_unstable | ProviderConfigStatusRequest_unstable | ProviderConfigSaveRequest_unstable | ProviderConfigDeleteRequest_unstable | ProviderConfigAuthenticateRequest_unstable | ProviderSecretsListRequest_unstable | ProviderSecretDeleteRequest_unstable | CanonicalModelInfoRequest_unstable | PreferencesReadRequest_unstable | PreferencesSaveRequest_unstable | PreferencesRemoveRequest_unstable | ConfigReadRequest_unstable | ConfigUpsertRequest_unstable | ConfigRemoveRequest_unstable | ConfigReadAllRequest_unstable | DefaultsReadRequest_unstable | DefaultsSaveRequest_unstable | DefaultsClearRequest_unstable | OnboardingImportScanRequest_unstable | OnboardingImportApplyRequest_unstable | ExportSessionRequest_unstable | ImportSessionRequest_unstable | ShareSessionNostrRequest_unstable | EncodeRecipeRequest_unstable | DecodeRecipeRequest_unstable | ScanRecipeRequest_unstable | ListRecipesRequest_unstable | DeleteRecipeRequest_unstable | ScheduleRecipeRequest_unstable | SetRecipeSlashCommandRequest_unstable | SaveRecipeRequest_unstable | ParseRecipeRequest_unstable | RecipeToYamlRequest_unstable | ListSchedulesRequest_unstable | ListScheduleSessionsRequest_unstable | CreateScheduleRequest_unstable | DeleteScheduleRequest_unstable | PauseScheduleRequest_unstable | UnpauseScheduleRequest_unstable | UpdateScheduleRequest_unstable | RunScheduleNowRequest_unstable | KillRunningJobRequest_unstable | InspectRunningJobRequest_unstable | GetSessionInfoRequest_unstable | FetchSessionConversationRequest_unstable | TruncateSessionConversationRequest_unstable | UpdateSessionProjectRequest_unstable | RenameSessionRequest_unstable | ArchiveSessionRequest_unstable | UnarchiveSessionRequest_unstable | CreateSourceRequest_unstable | ListSourcesRequest_unstable | ListAgentMentionsRequest_unstable | ListSlashCommandsRequest_unstable | UpdateSourceRequest_unstable | DeleteSourceRequest_unstable | ExportSourceRequest_unstable | ImportSourcesRequest_unstable | DictationTranscribeRequest_unstable | DictationConfigRequest_unstable | DictationSecretSaveRequest_unstable | DictationSecretDeleteRequest_unstable | DictationModelsListRequest_unstable | DictationModelDownloadRequest_unstable | DictationModelDownloadProgressRequest_unstable | DictationModelCancelRequest_unstable | DictationModelDeleteRequest_unstable | DictationModelSelectRequest_unstable | LocalInferenceModelsListRequest_unstable | LocalInferenceModelDownloadRequest_unstable | LocalInferenceModelDownloadProgressRequest_unstable | LocalInferenceModelDownloadCancelRequest_unstable | LocalInferenceModelDeleteRequest_unstable | LocalInferenceModelSettingsReadRequest_unstable | LocalInferenceModelSettingsUpdateRequest_unstable | LocalInferenceHuggingFaceSearchRequest_unstable | LocalInferenceHuggingFaceRepoVariantsRequest_unstable | LocalInferenceBuiltinChatTemplatesListRequest_unstable | {
         [key: string]: unknown;
     } | null;
 };
 
 export type ExtResponse = {
     id: string;
-    result?: EmptyResponse | GetToolsResponse_unstable | SetToolPermissionsResponse_unstable | GooseToolCallResponse_unstable | ReadResourceResponse_unstable | AppsListResponse_unstable | AppsExportResponse_unstable | AppsImportResponse_unstable | SteerSessionResponse_unstable | DiagnosticsGetResponse_unstable | ListPromptsResponse_unstable | GetPromptResponse_unstable | PromptOperationResponse_unstable | GetConfigExtensionsResponse_unstable | GetAvailableExtensionsResponse_unstable | GetSessionExtensionsResponse_unstable | ListProvidersResponse_unstable | ProviderSupportedModelsListResponse_unstable | ProviderCatalogListResponse_unstable | ProviderSetupCatalogListResponse_unstable | ProviderCatalogTemplateResponse_unstable | CustomProviderCreateResponse_unstable | CustomProviderReadResponse_unstable | CustomProviderUpdateResponse_unstable | CustomProviderDeleteResponse_unstable | RefreshProviderInventoryResponse_unstable | ProviderConfigReadResponse_unstable | ProviderConfigStatusResponse_unstable | ProviderConfigChangeResponse_unstable | ProviderSecretsListResponse_unstable | CanonicalModelInfoResponse_unstable | PreferencesReadResponse_unstable | ConfigReadResponse_unstable | ConfigReadAllResponse_unstable | DefaultsReadResponse_unstable | OnboardingImportScanResponse_unstable | OnboardingImportApplyResponse_unstable | ExportSessionResponse_unstable | ImportSessionResponse_unstable | ShareSessionNostrResponse_unstable | EncodeRecipeResponse_unstable | DecodeRecipeResponse_unstable | ScanRecipeResponse_unstable | ListRecipesResponse_unstable | SaveRecipeResponse_unstable | ParseRecipeResponse_unstable | RecipeToYamlResponse_unstable | ListSchedulesResponse_unstable | ListScheduleSessionsResponse_unstable | CreateScheduleResponse_unstable | UpdateScheduleResponse_unstable | RunScheduleNowResponse_unstable | KillRunningJobResponse_unstable | InspectRunningJobResponse_unstable | GetSessionInfoResponse_unstable | CreateSourceResponse_unstable | ListSourcesResponse_unstable | ListAgentMentionsResponse_unstable | ListSlashCommandsResponse_unstable | UpdateSourceResponse_unstable | ExportSourceResponse_unstable | ImportSourcesResponse_unstable | DictationTranscribeResponse_unstable | DictationConfigResponse_unstable | DictationModelsListResponse_unstable | DictationModelDownloadProgressResponse_unstable | LocalInferenceModelsListResponse_unstable | LocalInferenceModelDownloadResponse_unstable | LocalInferenceModelDownloadProgressResponse_unstable | LocalInferenceModelSettingsReadResponse_unstable | LocalInferenceModelSettingsUpdateResponse_unstable | LocalInferenceHuggingFaceSearchResponse_unstable | LocalInferenceHuggingFaceRepoVariantsResponse_unstable | LocalInferenceBuiltinChatTemplatesListResponse_unstable | unknown;
+    result?: EmptyResponse | GetToolsResponse_unstable | SetToolPermissionsResponse_unstable | GooseToolCallResponse_unstable | ReadResourceResponse_unstable | AppsListResponse_unstable | AppsExportResponse_unstable | AppsImportResponse_unstable | SteerSessionResponse_unstable | DiagnosticsGetResponse_unstable | ListPromptsResponse_unstable | GetPromptResponse_unstable | PromptOperationResponse_unstable | GetConfigExtensionsResponse_unstable | GetAvailableExtensionsResponse_unstable | GetSessionExtensionsResponse_unstable | ListProvidersResponse_unstable | ProviderSupportedModelsListResponse_unstable | ProviderCatalogListResponse_unstable | ProviderSetupCatalogListResponse_unstable | ProviderCatalogTemplateResponse_unstable | CustomProviderCreateResponse_unstable | CustomProviderReadResponse_unstable | CustomProviderUpdateResponse_unstable | CustomProviderDeleteResponse_unstable | RefreshProviderInventoryResponse_unstable | ProviderConfigReadResponse_unstable | ProviderConfigStatusResponse_unstable | ProviderConfigChangeResponse_unstable | ProviderSecretsListResponse_unstable | CanonicalModelInfoResponse_unstable | PreferencesReadResponse_unstable | ConfigReadResponse_unstable | ConfigReadAllResponse_unstable | DefaultsReadResponse_unstable | OnboardingImportScanResponse_unstable | OnboardingImportApplyResponse_unstable | ExportSessionResponse_unstable | ImportSessionResponse_unstable | ShareSessionNostrResponse_unstable | EncodeRecipeResponse_unstable | DecodeRecipeResponse_unstable | ScanRecipeResponse_unstable | ListRecipesResponse_unstable | SaveRecipeResponse_unstable | ParseRecipeResponse_unstable | RecipeToYamlResponse_unstable | ListSchedulesResponse_unstable | ListScheduleSessionsResponse_unstable | CreateScheduleResponse_unstable | UpdateScheduleResponse_unstable | RunScheduleNowResponse_unstable | KillRunningJobResponse_unstable | InspectRunningJobResponse_unstable | GetSessionInfoResponse_unstable | FetchSessionConversationResponse_unstable | CreateSourceResponse_unstable | ListSourcesResponse_unstable | ListAgentMentionsResponse_unstable | ListSlashCommandsResponse_unstable | UpdateSourceResponse_unstable | ExportSourceResponse_unstable | ImportSourcesResponse_unstable | DictationTranscribeResponse_unstable | DictationConfigResponse_unstable | DictationModelsListResponse_unstable | DictationModelDownloadProgressResponse_unstable | LocalInferenceModelsListResponse_unstable | LocalInferenceModelDownloadResponse_unstable | LocalInferenceModelDownloadProgressResponse_unstable | LocalInferenceModelSettingsReadResponse_unstable | LocalInferenceModelSettingsUpdateResponse_unstable | LocalInferenceHuggingFaceSearchResponse_unstable | LocalInferenceHuggingFaceRepoVariantsResponse_unstable | LocalInferenceBuiltinChatTemplatesListResponse_unstable | unknown;
 } | {
     error: {
         code: number;

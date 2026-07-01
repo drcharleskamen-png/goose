@@ -1,6 +1,23 @@
+use super::load_session::conversation_replay_notifications;
 use super::*;
 
 impl GooseAcpAgent {
+    async fn send_reloaded_session_info_notification(
+        &self,
+        session_id: &str,
+    ) -> Result<Session, agent_client_protocol::Error> {
+        let session = self
+            .session_manager
+            .get_session(session_id, false)
+            .await
+            .internal_err_ctx("Failed to reload session")?;
+        self.send_and_publish_session_notification_to_client(Self::session_info_notification(
+            &session,
+        ))
+        .await?;
+        Ok(session)
+    }
+
     pub(super) async fn on_update_working_dir(
         &self,
         req: UpdateWorkingDirRequest,
@@ -27,12 +44,12 @@ impl GooseAcpAgent {
             return Ok(EmptyResponse {});
         }
 
-        self.session_manager
-            .update(session_id)
-            .working_dir(path)
-            .apply()
-            .await
-            .internal_err_ctx("Failed to update session working directory")?;
+        self.apply_session_update_and_invalidate(
+            self.session_manager.update(session_id).working_dir(path),
+            session_id,
+            &[AcpSessionInvalidation::SessionInfo],
+        )
+        .await?;
 
         let session = self
             .session_manager
@@ -50,6 +67,15 @@ impl GooseAcpAgent {
             .extension_manager
             .update_working_dir(&session.working_dir)
             .await;
+
+        self.send_and_publish_session_notification_to_client(Self::session_info_notification(
+            &session,
+        ))
+        .await?;
+        for notification in session_setup_notifications(&session) {
+            self.send_and_publish_session_notification_to_client(notification)
+                .await?;
+        }
 
         Ok(EmptyResponse {})
     }
@@ -99,6 +125,11 @@ impl GooseAcpAgent {
         &self,
         req: DeleteSessionRequest,
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
+        let session = self
+            .session_manager
+            .get_session(&req.session_id, false)
+            .await
+            .internal_err()?;
         self.session_manager
             .delete_session(&req.session_id)
             .await
@@ -108,6 +139,10 @@ impl GooseAcpAgent {
             .remove_session_if_loaded(&req.session_id)
             .await
             .internal_err_ctx("Failed to remove in-memory agent")?;
+        self.send_and_publish_session_notification_to_client(Self::session_deleted_notification(
+            &session,
+        ))
+        .await?;
         Ok(EmptyResponse {})
     }
 
@@ -146,6 +181,10 @@ impl GooseAcpAgent {
             .import_session(&data, session_type)
             .await
             .internal_err()?;
+        self.send_and_publish_session_notification_to_client(Self::session_info_notification(
+            &session,
+        ))
+        .await?;
 
         let msg_count = session.message_count as u64;
 
@@ -202,6 +241,41 @@ impl GooseAcpAgent {
         })
     }
 
+    pub(super) async fn on_fetch_session_conversation(
+        &self,
+        req: FetchSessionConversationRequest,
+    ) -> Result<FetchSessionConversationResponse, agent_client_protocol::Error> {
+        let session_id = req.session_id.trim();
+        if session_id.is_empty() {
+            return Err(
+                agent_client_protocol::Error::invalid_params().data("sessionId cannot be empty")
+            );
+        }
+
+        let session = self
+            .session_manager
+            .get_session(session_id, false)
+            .await
+            .map_err(|_| {
+                agent_client_protocol::Error::resource_not_found(Some(session_id.to_string()))
+                    .data(format!("Session not found: {}", session_id))
+            })?;
+
+        let (messages, next_cursor, reset) = self
+            .session_manager
+            .get_conversation_since(session_id, req.cursor)
+            .await
+            .internal_err()?;
+        let session_id = SessionId::new(session.id);
+        let (notifications, _) = conversation_replay_notifications(&session_id, &messages)?;
+
+        Ok(FetchSessionConversationResponse {
+            notifications,
+            next_cursor,
+            reset,
+        })
+    }
+
     pub(super) async fn on_truncate_session_conversation(
         &self,
         req: TruncateSessionConversationRequest,
@@ -213,10 +287,10 @@ impl GooseAcpAgent {
             );
         }
 
-        self.session_manager
-            .truncate_conversation(session_id, req.truncate_from)
-            .await
-            .internal_err()?;
+        self.truncate_session_conversation_and_invalidate(session_id, req.truncate_from)
+            .await?;
+        self.send_reloaded_session_info_notification(session_id)
+            .await?;
         Ok(EmptyResponse {})
     }
 
@@ -224,12 +298,16 @@ impl GooseAcpAgent {
         &self,
         req: UpdateSessionProjectRequest,
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
-        self.session_manager
-            .update(&req.session_id)
-            .project_id(req.project_id)
-            .apply()
-            .await
-            .internal_err()?;
+        self.apply_session_update_and_invalidate(
+            self.session_manager
+                .update(&req.session_id)
+                .project_id(req.project_id),
+            &req.session_id,
+            &[AcpSessionInvalidation::SessionInfo],
+        )
+        .await?;
+        self.send_reloaded_session_info_notification(&req.session_id)
+            .await?;
         Ok(EmptyResponse {})
     }
 
@@ -237,12 +315,16 @@ impl GooseAcpAgent {
         &self,
         req: RenameSessionRequest,
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
-        self.session_manager
-            .update(&req.session_id)
-            .user_provided_name(req.title)
-            .apply()
-            .await
-            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        self.apply_session_update_and_invalidate(
+            self.session_manager
+                .update(&req.session_id)
+                .user_provided_name(req.title),
+            &req.session_id,
+            &[AcpSessionInvalidation::SessionInfo],
+        )
+        .await?;
+        self.send_reloaded_session_info_notification(&req.session_id)
+            .await?;
         Ok(EmptyResponse {})
     }
 
@@ -250,12 +332,16 @@ impl GooseAcpAgent {
         &self,
         req: ArchiveSessionRequest,
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
-        self.session_manager
-            .update(&req.session_id)
-            .archived_at(Some(chrono::Utc::now()))
-            .apply()
-            .await
-            .internal_err()?;
+        self.apply_session_update_and_invalidate(
+            self.session_manager
+                .update(&req.session_id)
+                .archived_at(Some(chrono::Utc::now())),
+            &req.session_id,
+            &[AcpSessionInvalidation::SessionInfo],
+        )
+        .await?;
+        self.send_reloaded_session_info_notification(&req.session_id)
+            .await?;
         self.sessions.lock().await.remove(&req.session_id);
         self.agent_manager
             .remove_session_if_loaded(&req.session_id)
@@ -268,12 +354,16 @@ impl GooseAcpAgent {
         &self,
         req: UnarchiveSessionRequest,
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
-        self.session_manager
-            .update(&req.session_id)
-            .archived_at(None)
-            .apply()
-            .await
-            .internal_err()?;
+        self.apply_session_update_and_invalidate(
+            self.session_manager
+                .update(&req.session_id)
+                .archived_at(None),
+            &req.session_id,
+            &[AcpSessionInvalidation::SessionInfo],
+        )
+        .await?;
+        self.send_reloaded_session_info_notification(&req.session_id)
+            .await?;
         Ok(EmptyResponse {})
     }
 }

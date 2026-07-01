@@ -4732,6 +4732,1438 @@
       "x-side": "agent",
       "x-method": "_goose/unstable/session/info"
     },
+    "FetchSessionConversationRequest_unstable": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "cursor": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "description": "Fetch persisted conversation updates after a message-count cursor.",
+      "x-side": "agent",
+      "x-method": "_goose/unstable/session/conversation/fetch"
+    },
+    "FetchSessionConversationResponse_unstable": {
+      "type": "object",
+      "properties": {
+        "notifications": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionNotification"
+          }
+        },
+        "nextCursor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reset": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "notifications",
+        "nextCursor"
+      ],
+      "x-side": "agent",
+      "x-method": "_goose/unstable/session/conversation/fetch"
+    },
+    "SessionNotification": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "$ref": "#/$defs/SessionId",
+          "description": "The ID of the session this update pertains to."
+        },
+        "update": {
+          "$ref": "#/$defs/SessionUpdate",
+          "description": "The actual update content."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "sessionId",
+        "update"
+      ],
+      "description": "Notification containing a session update from the agent.\n\nUsed to stream real-time progress and results during prompt processing.\n\nSee protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)",
+      "x-side": "client",
+      "x-method": "session/update"
+    },
+    "SessionUpdate": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ContentChunk",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "user_message_chunk"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "A chunk of the user's message being streamed."
+        },
+        {
+          "$ref": "#/$defs/ContentChunk",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "agent_message_chunk"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "A chunk of the agent's response being streamed."
+        },
+        {
+          "$ref": "#/$defs/ContentChunk",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "agent_thought_chunk"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "A chunk of the agent's internal reasoning being streamed."
+        },
+        {
+          "$ref": "#/$defs/ToolCall",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "tool_call"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "Notification that a new tool call has been initiated."
+        },
+        {
+          "$ref": "#/$defs/ToolCallUpdate",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "tool_call_update"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "Update on the status or results of a tool call."
+        },
+        {
+          "$ref": "#/$defs/Plan",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "plan"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "The agent's execution plan for complex tasks.\nSee protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan)"
+        },
+        {
+          "$ref": "#/$defs/PlanUpdate",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "plan_update"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA content update for a plan identified by ID."
+        },
+        {
+          "$ref": "#/$defs/PlanRemoved",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "plan_removed"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nRemoval notice for a plan identified by ID."
+        },
+        {
+          "$ref": "#/$defs/AvailableCommandsUpdate",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "available_commands_update"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "Available commands are ready or have changed"
+        },
+        {
+          "$ref": "#/$defs/CurrentModeUpdate",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "current_mode_update"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "The current mode of the session has changed\n\nSee protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)"
+        },
+        {
+          "$ref": "#/$defs/ConfigOptionUpdate",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "config_option_update"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "Session configuration options have been updated."
+        },
+        {
+          "$ref": "#/$defs/SessionInfoUpdate",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "session_info_update"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "Session metadata has been updated (title, timestamps, custom metadata)"
+        },
+        {
+          "$ref": "#/$defs/UsageUpdate",
+          "type": "object",
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "const": "usage_update"
+            }
+          },
+          "required": [
+            "sessionUpdate"
+          ],
+          "description": "Context window and cost update for the session."
+        }
+      ],
+      "description": "Different types of updates that can be sent during session processing.\n\nThese updates provide real-time feedback about the agent's progress.\n\nSee protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)",
+      "discriminator": {
+        "propertyName": "sessionUpdate"
+      }
+    },
+    "MessageId": {
+      "type": "string",
+      "description": "Unique identifier for a message within a session."
+    },
+    "ContentChunk": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/ContentBlock",
+          "description": "A single item of content"
+        },
+        "messageId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MessageId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A unique identifier for the message this chunk belongs to.\n\nAll chunks belonging to the same message share the same `messageId`.\nA change in `messageId` indicates a new message has started."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "description": "A streamed item of content"
+    },
+    "ToolCallId": {
+      "type": "string",
+      "description": "Unique identifier for a tool call within a session."
+    },
+    "ToolKind": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "read",
+          "description": "Reading files or data."
+        },
+        {
+          "type": "string",
+          "const": "edit",
+          "description": "Modifying files or content."
+        },
+        {
+          "type": "string",
+          "const": "delete",
+          "description": "Removing files or data."
+        },
+        {
+          "type": "string",
+          "const": "move",
+          "description": "Moving or renaming files."
+        },
+        {
+          "type": "string",
+          "const": "search",
+          "description": "Searching for information."
+        },
+        {
+          "type": "string",
+          "const": "execute",
+          "description": "Running commands or code."
+        },
+        {
+          "type": "string",
+          "const": "think",
+          "description": "Internal reasoning or planning."
+        },
+        {
+          "type": "string",
+          "const": "fetch",
+          "description": "Retrieving external data."
+        },
+        {
+          "type": "string",
+          "const": "switch_mode",
+          "description": "Switching the current session mode."
+        },
+        {
+          "type": "string",
+          "const": "other",
+          "description": "Other tool types (default)."
+        }
+      ],
+      "description": "Categories of tools that can be invoked.\n\nTool kinds help clients choose appropriate icons and optimize how they\ndisplay tool execution progress.\n\nSee protocol docs: [Creating](https://agentclientprotocol.com/protocol/tool-calls#creating)"
+    },
+    "ToolCallStatus": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "pending",
+          "description": "The tool call hasn't started running yet because the input is either\nstreaming or we're awaiting approval."
+        },
+        {
+          "type": "string",
+          "const": "in_progress",
+          "description": "The tool call is currently running."
+        },
+        {
+          "type": "string",
+          "const": "completed",
+          "description": "The tool call completed successfully."
+        },
+        {
+          "type": "string",
+          "const": "failed",
+          "description": "The tool call failed with an error."
+        }
+      ],
+      "description": "Execution status of a tool call.\n\nTool calls progress through different statuses during their lifecycle.\n\nSee protocol docs: [Status](https://agentclientprotocol.com/protocol/tool-calls#status)"
+    },
+    "ToolCallContent": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Content",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "content"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "description": "Standard content block (text, images, resources)."
+        },
+        {
+          "$ref": "#/$defs/Diff",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "diff"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "description": "File modification shown as a diff."
+        },
+        {
+          "$ref": "#/$defs/Terminal",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "terminal"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "description": "Embed a terminal created with `terminal/create` by its id.\n\nThe terminal must be added before calling `terminal/release`.\n\nSee protocol docs: [Terminal](https://agentclientprotocol.com/protocol/terminals)"
+        }
+      ],
+      "description": "Content produced by a tool call.\n\nTool calls can produce different types of content including\nstandard content blocks (text, images) or file diffs.\n\nSee protocol docs: [Content](https://agentclientprotocol.com/protocol/tool-calls#content)",
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "Content": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/ContentBlock",
+          "description": "The actual content block."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "description": "Standard content block (text, images, resources)."
+    },
+    "Diff": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The file path being modified."
+        },
+        "oldText": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The original content (None for new files)."
+        },
+        "newText": {
+          "type": "string",
+          "description": "The new content after modification."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "path",
+        "newText"
+      ],
+      "description": "A diff representing file modifications.\n\nShows changes to files in a format suitable for display in the client UI.\n\nSee protocol docs: [Content](https://agentclientprotocol.com/protocol/tool-calls#content)"
+    },
+    "TerminalId": {
+      "type": "string",
+      "description": "Typed identifier used for terminal values on the wire."
+    },
+    "Terminal": {
+      "type": "object",
+      "properties": {
+        "terminalId": {
+          "$ref": "#/$defs/TerminalId",
+          "description": "Identifier of the terminal instance to embed in the content stream."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "description": "Embed a terminal created with `terminal/create` by its id.\n\nThe terminal must be added before calling `terminal/release`.\n\nSee protocol docs: [Terminal](https://agentclientprotocol.com/protocol/terminals)"
+    },
+    "ToolCallLocation": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The file path being accessed or modified."
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Optional line number within the file.",
+          "minimum": 0
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "description": "A file location being accessed or modified by a tool.\n\nEnables clients to implement \"follow-along\" features that track\nwhich files the agent is working with in real-time.\n\nSee protocol docs: [Following the Agent](https://agentclientprotocol.com/protocol/tool-calls#following-the-agent)"
+    },
+    "ToolCall": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "$ref": "#/$defs/ToolCallId",
+          "description": "Unique identifier for this tool call within the session."
+        },
+        "title": {
+          "type": "string",
+          "description": "Human-readable title describing what the tool is doing."
+        },
+        "kind": {
+          "$ref": "#/$defs/ToolKind",
+          "description": "The category of tool being invoked.\nHelps clients choose appropriate icons and UI treatment."
+        },
+        "status": {
+          "$ref": "#/$defs/ToolCallStatus",
+          "description": "Current execution status of the tool call."
+        },
+        "content": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ToolCallContent"
+          },
+          "description": "Content produced by the tool call.",
+          "x-deserialize-default-on-error": {},
+          "x-deserialize-skip-invalid-items": {}
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ToolCallLocation"
+          },
+          "description": "File locations affected by this tool call.\nEnables \"follow-along\" features in clients.",
+          "x-deserialize-default-on-error": {},
+          "x-deserialize-skip-invalid-items": {}
+        },
+        "rawInput": {
+          "description": "Raw input parameters sent to the tool."
+        },
+        "rawOutput": {
+          "description": "Raw output returned by the tool."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "toolCallId",
+        "title"
+      ],
+      "description": "Represents a tool call that the language model has requested.\n\nTool calls are actions that the agent executes on behalf of the language model,\nsuch as reading files, executing code, or fetching data from external sources.\n\nSee protocol docs: [Tool Calls](https://agentclientprotocol.com/protocol/tool-calls)"
+    },
+    "ToolCallUpdate": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "$ref": "#/$defs/ToolCallId",
+          "description": "The ID of the tool call being updated."
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Update the tool kind.",
+          "x-deserialize-default-on-error": {}
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolCallStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Update the execution status.",
+          "x-deserialize-default-on-error": {}
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Update the human-readable title."
+        },
+        "content": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/ToolCallContent"
+          },
+          "description": "Replace the content collection.",
+          "x-deserialize-default-on-error": {},
+          "x-deserialize-skip-invalid-items": {}
+        },
+        "locations": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/ToolCallLocation"
+          },
+          "description": "Replace the locations collection.",
+          "x-deserialize-default-on-error": {},
+          "x-deserialize-skip-invalid-items": {}
+        },
+        "rawInput": {
+          "description": "Update the raw input."
+        },
+        "rawOutput": {
+          "description": "Update the raw output."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "toolCallId"
+      ],
+      "description": "An update to an existing tool call.\n\nUsed to report progress and results as tools execute. All fields except\nthe tool call ID are optional - only changed fields need to be included.\n\nSee protocol docs: [Updating](https://agentclientprotocol.com/protocol/tool-calls#updating)"
+    },
+    "PlanEntry": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "Human-readable description of what this task aims to accomplish."
+        },
+        "priority": {
+          "$ref": "#/$defs/PlanEntryPriority",
+          "description": "The relative importance of this task.\nUsed to indicate which tasks are most critical to the overall goal."
+        },
+        "status": {
+          "$ref": "#/$defs/PlanEntryStatus",
+          "description": "Current execution status of this task."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "content",
+        "priority",
+        "status"
+      ],
+      "description": "A single entry in the execution plan.\n\nRepresents a task or goal that the assistant intends to accomplish\nas part of fulfilling the user's request.\nSee protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)"
+    },
+    "PlanEntryPriority": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "high",
+          "description": "High priority task - critical to the overall goal."
+        },
+        {
+          "type": "string",
+          "const": "medium",
+          "description": "Medium priority task - important but not critical."
+        },
+        {
+          "type": "string",
+          "const": "low",
+          "description": "Low priority task - nice to have but not essential."
+        }
+      ],
+      "description": "Priority levels for plan entries.\n\nUsed to indicate the relative importance or urgency of different\ntasks in the execution plan.\nSee protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)"
+    },
+    "PlanEntryStatus": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "pending",
+          "description": "The task has not started yet."
+        },
+        {
+          "type": "string",
+          "const": "in_progress",
+          "description": "The task is currently being worked on."
+        },
+        {
+          "type": "string",
+          "const": "completed",
+          "description": "The task has been successfully completed."
+        }
+      ],
+      "description": "Status of a plan entry in the execution flow.\n\nTracks the lifecycle of each task from planning through completion.\nSee protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)"
+    },
+    "Plan": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlanEntry"
+          },
+          "description": "The list of tasks to be accomplished.\n\nWhen updating a plan, the agent must send a complete list of all entries\nwith their current status. The client replaces the entire plan with each update.",
+          "x-deserialize-default-on-error": {},
+          "x-deserialize-skip-invalid-items": {}
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "entries"
+      ],
+      "description": "An execution plan for accomplishing complex tasks.\n\nPlans consist of multiple entries representing individual tasks or goals.\nAgents report plans to clients to provide visibility into their execution strategy.\nPlans can evolve during execution as the agent discovers new requirements or completes tasks.\n\nSee protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan)"
+    },
+    "PlanUpdateContent": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/PlanItems",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "items"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "description": "Structured plan entries."
+        },
+        {
+          "$ref": "#/$defs/PlanFile",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "file"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "description": "A URI pointing to a file containing the plan."
+        },
+        {
+          "$ref": "#/$defs/PlanMarkdown",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "markdown"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "description": "Raw markdown content for the plan."
+        }
+      ],
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nUpdated content for a plan.",
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "PlanId": {
+      "type": "string",
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nUnique identifier for a plan within a session."
+    },
+    "PlanItems": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/PlanId",
+          "description": "The plan ID to update."
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlanEntry"
+          },
+          "description": "The list of tasks to be accomplished.\n\nWhen updating an item-based plan, the agent must send a complete list of all entries\nwith their current status. The client replaces that plan with each update.",
+          "x-deserialize-default-on-error": {},
+          "x-deserialize-skip-invalid-items": {}
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "id",
+        "entries"
+      ],
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA plan represented as structured entries."
+    },
+    "PlanFile": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/PlanId",
+          "description": "The plan ID to update."
+        },
+        "uri": {
+          "type": "string",
+          "description": "The URI of the file containing the plan."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "id",
+        "uri"
+      ],
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA plan represented by a file URI."
+    },
+    "PlanMarkdown": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/PlanId",
+          "description": "The plan ID to update."
+        },
+        "content": {
+          "type": "string",
+          "description": "Markdown content for the plan."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA plan represented as raw markdown content."
+    },
+    "PlanUpdate": {
+      "type": "object",
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/PlanUpdateContent",
+          "description": "The updated plan content."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "plan"
+      ],
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA content update for a plan identified by ID."
+    },
+    "PlanRemoved": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/PlanId",
+          "description": "The plan ID to remove."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nRemoval notice for a plan identified by ID."
+    },
+    "AvailableCommand": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Command name (e.g., `create_plan`, `research_codebase`)."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what the command does."
+        },
+        "input": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AvailableCommandInput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Input for the command if required",
+          "x-deserialize-default-on-error": {}
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "description": "Information about a command."
+    },
+    "AvailableCommandInput": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UnstructuredCommandInput",
+          "description": "All text that was typed after the command name is provided as input."
+        }
+      ],
+      "description": "The input specification for a command."
+    },
+    "UnstructuredCommandInput": {
+      "type": "object",
+      "properties": {
+        "hint": {
+          "type": "string",
+          "description": "A hint to display when the input hasn't been provided yet"
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "hint"
+      ],
+      "description": "All text that was typed after the command name is provided as input."
+    },
+    "AvailableCommandsUpdate": {
+      "type": "object",
+      "properties": {
+        "availableCommands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AvailableCommand"
+          },
+          "description": "Commands the agent can execute",
+          "x-deserialize-default-on-error": {},
+          "x-deserialize-skip-invalid-items": {}
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "availableCommands"
+      ],
+      "description": "Available commands are ready or have changed"
+    },
+    "SessionModeId": {
+      "type": "string",
+      "description": "Unique identifier for a Session Mode."
+    },
+    "CurrentModeUpdate": {
+      "type": "object",
+      "properties": {
+        "currentModeId": {
+          "$ref": "#/$defs/SessionModeId",
+          "description": "The ID of the current mode"
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "currentModeId"
+      ],
+      "description": "The current mode of the session has changed\n\nSee protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)"
+    },
+    "SessionConfigOption": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SessionConfigId",
+          "description": "Unique identifier for the configuration option."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable label for the option."
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional description for the Client to display to the user."
+        },
+        "category": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionConfigOptionCategory"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional semantic category for this option (UX only).",
+          "x-deserialize-default-on-error": {}
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "oneOf": [
+        {
+          "$ref": "#/$defs/SessionConfigSelect",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "select"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "description": "Single-value selector (dropdown)."
+        },
+        {
+          "$ref": "#/$defs/SessionConfigBoolean",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "boolean"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nBoolean on/off toggle."
+        }
+      ],
+      "description": "A session configuration option selector and its current state.",
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "SessionConfigId": {
+      "type": "string",
+      "description": "Unique identifier for a session configuration option."
+    },
+    "SessionConfigOptionCategory": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "mode",
+          "description": "Session mode selector."
+        },
+        {
+          "type": "string",
+          "const": "model",
+          "description": "Model selector."
+        },
+        {
+          "type": "string",
+          "const": "model_config",
+          "description": "Model-related configuration parameter."
+        },
+        {
+          "type": "string",
+          "const": "thought_level",
+          "description": "Thought/reasoning level selector."
+        },
+        {
+          "type": "string",
+          "description": "Unknown / uncategorized selector."
+        }
+      ],
+      "description": "Semantic category for a session configuration option.\n\nThis is intended to help Clients distinguish broadly common selectors (e.g. model selector vs\nsession mode selector vs thought/reasoning level) for UX purposes (keyboard shortcuts, icons,\nplacement). It MUST NOT be required for correctness. Clients MUST handle missing or unknown\ncategories gracefully.\n\nCategory names beginning with `_` are free for custom use, like other ACP extension methods.\nCategory names that do not begin with `_` are reserved for the ACP spec."
+    },
+    "SessionConfigValueId": {
+      "type": "string",
+      "description": "Unique identifier for a session configuration option value."
+    },
+    "SessionConfigSelectOptions": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionConfigSelectOption"
+          },
+          "description": "A flat list of options with no grouping."
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionConfigSelectGroup"
+          },
+          "description": "A list of options grouped under headers."
+        }
+      ],
+      "description": "Possible values for a session configuration option."
+    },
+    "SessionConfigSelectOption": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/SessionConfigValueId",
+          "description": "Unique identifier for this option value."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable label for this option value."
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional description for this option value."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "value",
+        "name"
+      ],
+      "description": "A possible value for a session configuration option."
+    },
+    "SessionConfigSelectGroup": {
+      "type": "object",
+      "properties": {
+        "group": {
+          "$ref": "#/$defs/SessionConfigGroupId",
+          "description": "Unique identifier for this group."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable label for this group."
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionConfigSelectOption"
+          },
+          "description": "The set of option values in this group."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "group",
+        "name",
+        "options"
+      ],
+      "description": "A group of possible values for a session configuration option."
+    },
+    "SessionConfigGroupId": {
+      "type": "string",
+      "description": "Unique identifier for a session configuration option value group."
+    },
+    "SessionConfigSelect": {
+      "type": "object",
+      "properties": {
+        "currentValue": {
+          "$ref": "#/$defs/SessionConfigValueId",
+          "description": "The currently selected value."
+        },
+        "options": {
+          "$ref": "#/$defs/SessionConfigSelectOptions",
+          "description": "The set of selectable options."
+        }
+      },
+      "required": [
+        "currentValue",
+        "options"
+      ],
+      "description": "A single-value selector (dropdown) session configuration option payload."
+    },
+    "SessionConfigBoolean": {
+      "type": "object",
+      "properties": {
+        "currentValue": {
+          "type": "boolean",
+          "description": "The current value of the boolean option."
+        }
+      },
+      "required": [
+        "currentValue"
+      ],
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA boolean on/off toggle session configuration option payload."
+    },
+    "ConfigOptionUpdate": {
+      "type": "object",
+      "properties": {
+        "configOptions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionConfigOption"
+          },
+          "description": "The full set of configuration options and their current values.",
+          "x-deserialize-default-on-error": {},
+          "x-deserialize-skip-invalid-items": {}
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "configOptions"
+      ],
+      "description": "Session configuration options have been updated."
+    },
+    "SessionInfoUpdate": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Human-readable title for the session. Set to null to clear."
+        },
+        "updatedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "ISO 8601 timestamp of last activity. Set to null to clear."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "description": "Update to session metadata. All fields are optional to support partial updates.\n\nAgents send this notification to update session information like title or custom metadata.\nThis allows clients to display dynamic session names and track session state changes."
+    },
+    "Cost": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "format": "double",
+          "description": "Total cumulative cost for session."
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code (e.g., \"USD\", \"EUR\")."
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "description": "Cost information for a session."
+    },
+    "UsageUpdate": {
+      "type": "object",
+      "properties": {
+        "used": {
+          "type": "integer",
+          "description": "Tokens currently in context.",
+          "minimum": 0
+        },
+        "size": {
+          "type": "integer",
+          "description": "Total context window size in tokens.",
+          "minimum": 0
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Cost"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Cumulative session cost (optional).",
+          "x-deserialize-default-on-error": {}
+        },
+        "_meta": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {},
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
+        }
+      },
+      "required": [
+        "used",
+        "size"
+      ],
+      "description": "Context window and cost update for a session."
+    },
     "TruncateSessionConversationRequest_unstable": {
       "type": "object",
       "properties": {
@@ -5122,74 +6554,6 @@
       ],
       "x-side": "agent",
       "x-method": "_goose/unstable/slash-commands/list"
-    },
-    "AvailableCommand": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "Command name (e.g., `create_plan`, `research_codebase`)."
-        },
-        "description": {
-          "type": "string",
-          "description": "Human-readable description of what the command does."
-        },
-        "input": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/AvailableCommandInput"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Input for the command if required",
-          "x-deserialize-default-on-error": {}
-        },
-        "_meta": {
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": {},
-          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
-        }
-      },
-      "required": [
-        "name",
-        "description"
-      ],
-      "description": "Information about a command."
-    },
-    "AvailableCommandInput": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/UnstructuredCommandInput",
-          "description": "All text that was typed after the command name is provided as input."
-        }
-      ],
-      "description": "The input specification for a command."
-    },
-    "UnstructuredCommandInput": {
-      "type": "object",
-      "properties": {
-        "hint": {
-          "type": "string",
-          "description": "A hint to display when the input hasn't been provided yet"
-        },
-        "_meta": {
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": {},
-          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
-        }
-      },
-      "required": [
-        "hint"
-      ],
-      "description": "All text that was typed after the command name is provided as input."
     },
     "UpdateSourceRequest_unstable": {
       "type": "object",
@@ -7420,6 +8784,15 @@
                 {
                   "allOf": [
                     {
+                      "$ref": "#/$defs/FetchSessionConversationRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/session/conversation/fetch",
+                  "title": "FetchSessionConversationRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
                       "$ref": "#/$defs/TruncateSessionConversationRequest_unstable"
                     }
                   ],
@@ -8183,6 +9556,14 @@
                         }
                       ],
                       "title": "GetSessionInfoResponse_unstable"
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/FetchSessionConversationResponse_unstable"
+                        }
+                      ],
+                      "title": "FetchSessionConversationResponse_unstable"
                     },
                     {
                       "allOf": [

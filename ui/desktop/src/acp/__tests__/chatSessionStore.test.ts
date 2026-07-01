@@ -3,6 +3,7 @@ import type {
   RequestPermissionRequest,
   SessionNotification,
 } from '@agentclientprotocol/sdk';
+import type { GooseSessionNotification_unstable } from '@aaif/goose-sdk';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Message } from '../../types/message';
@@ -167,6 +168,20 @@ function activeRunNotification(sessionId: string, activeRunId: string | null): S
         },
       },
     } as SessionNotification['update'],
+  };
+}
+
+function usageNotification(sessionId: string): GooseSessionNotification_unstable {
+  return {
+    sessionId,
+    update: {
+      sessionUpdate: 'usage_update',
+      used: 42,
+      contextLimit: 200,
+      accumulatedInputTokens: 10,
+      accumulatedOutputTokens: 15,
+      accumulatedCost: 0.12,
+    },
   };
 }
 
@@ -446,6 +461,26 @@ describe('acpChatSessionStore', () => {
       true
     );
     expect(acpChatSessionStore.getSnapshot(currentSessionId)?.activeRunId).toBeNull();
+  });
+
+  it('preserves token totals when resetting fetched conversation state', () => {
+    const currentSessionId = sessionId('session-1');
+
+    acpChatSessionActions.applyAcpGooseSessionNotification(usageNotification(currentSessionId));
+    const snapshot = acpChatSessionActions.applyFetchedConversation(
+      currentSessionId,
+      [agentMessageChunkNotification(currentSessionId, 'message-1', 'Hello')],
+      1,
+      true
+    );
+
+    expect(snapshot.messages).toHaveLength(1);
+    expect(snapshot.tokenState).toMatchObject({
+      accumulatedInputTokens: 10,
+      accumulatedOutputTokens: 15,
+      accumulatedTotalTokens: 25,
+      accumulatedCost: 0.12,
+    });
   });
 
   it('clears active run ids before replaying a session load', () => {

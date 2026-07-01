@@ -14,6 +14,9 @@ import {
   type AdapterState,
   cloneMessage,
   getGooseActiveRunId,
+  getGooseConversationCursor,
+  getGooseMessageCount,
+  isRecord,
 } from './adapter/shared';
 import { applyToolCall, applyToolCallUpdate } from './adapter/tools';
 import type { AcpElicitationRequest } from './elicitationRequests';
@@ -79,7 +82,14 @@ function applyAcpSessionNotification(
       return applyToolCallUpdate(state, update);
     case 'session_info_update': {
       const activeRunId = getGooseActiveRunId(update);
-      if (!update.title && activeRunId === undefined) {
+      const messageCount = getGooseMessageCount(update);
+      const conversationCursor = getGooseConversationCursor(update);
+      if (
+        !update.title &&
+        activeRunId === undefined &&
+        messageCount === undefined &&
+        conversationCursor === undefined
+      ) {
         return [];
       }
 
@@ -88,12 +98,42 @@ function applyAcpSessionNotification(
           type: 'sessionInfo',
           ...(update.title ? { name: update.title } : {}),
           ...(activeRunId !== undefined ? { activeRunId } : {}),
+          ...(messageCount !== undefined ? { messageCount } : {}),
+          ...(conversationCursor !== undefined ? { conversationCursor } : {}),
         },
       ];
     }
     case 'usage_update':
-      return [];
+      return [
+        {
+          type: 'tokenState',
+          tokenState: {
+            totalTokens: update.used,
+            ...standardUsageAccumulatedTokenState(update),
+            ...(update.cost !== undefined ? { accumulatedCost: update.cost?.amount ?? null } : {}),
+          },
+        },
+      ];
     default:
       return [];
   }
+}
+
+function standardUsageAccumulatedTokenState(
+  update: Extract<SessionNotification['update'], { sessionUpdate: 'usage_update' }>
+): Extract<AcpChatStateChange, { type: 'tokenState' }>['tokenState'] {
+  if (!isRecord(update._meta) || !isRecord(update._meta.goose)) {
+    return {};
+  }
+
+  const { accumulatedInputTokens, accumulatedOutputTokens } = update._meta.goose;
+  if (typeof accumulatedInputTokens !== 'number' || typeof accumulatedOutputTokens !== 'number') {
+    return {};
+  }
+
+  return {
+    accumulatedInputTokens,
+    accumulatedOutputTokens,
+    accumulatedTotalTokens: accumulatedInputTokens + accumulatedOutputTokens,
+  };
 }

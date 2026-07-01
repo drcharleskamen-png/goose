@@ -70,6 +70,8 @@ import type {
   ExportSessionResponse_unstable,
   ExportSourceRequest_unstable,
   ExportSourceResponse_unstable,
+  FetchSessionConversationRequest_unstable,
+  FetchSessionConversationResponse_unstable,
   GetAvailableExtensionsRequest_unstable,
   GetAvailableExtensionsResponse_unstable,
   GetConfigExtensionsRequest_unstable,
@@ -220,6 +222,7 @@ import {
   zEncodeRecipeResponse_unstable,
   zExportSessionResponse_unstable,
   zExportSourceResponse_unstable,
+  zFetchSessionConversationResponse_unstable,
   zGetAvailableExtensionsResponse_unstable,
   zGetConfigExtensionsResponse_unstable,
   zGetPromptResponse_unstable,
@@ -1099,6 +1102,18 @@ export class GooseExtClient {
     return zGetSessionInfoResponse_unstable.parse(
       raw,
     ) as GetSessionInfoResponse_unstable;
+  }
+
+  async sessionConversationFetch_unstable(
+    params: FetchSessionConversationRequest_unstable,
+  ): Promise<FetchSessionConversationResponse_unstable> {
+    const raw = await this.conn.extMethod(
+      "_goose/unstable/session/conversation/fetch",
+      params,
+    );
+    return zFetchSessionConversationResponse_unstable.parse(
+      raw,
+    ) as FetchSessionConversationResponse_unstable;
   }
 
   async sessionConversationTruncate_unstable(

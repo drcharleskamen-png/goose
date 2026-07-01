@@ -217,6 +217,7 @@ fn get_agent_messages(params: SubagentRunParams) -> AgentMessagesFuture {
                 Ok(AgentEvent::HistoryReplaced(updated_conversation)) => {
                     conversation = updated_conversation;
                 }
+                Ok(AgentEvent::SessionInvalidated(_)) => {}
                 Err(e) => {
                     tracing::error!("Error receiving message from subagent: {}", e);
                     break;

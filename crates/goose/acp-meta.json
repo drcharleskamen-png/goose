@@ -391,6 +391,11 @@
       "responseType": "GetSessionInfoResponse_unstable"
     },
     {
+      "method": "_goose/unstable/session/conversation/fetch",
+      "requestType": "FetchSessionConversationRequest_unstable",
+      "responseType": "FetchSessionConversationResponse_unstable"
+    },
+    {
       "method": "_goose/unstable/session/conversation/truncate",
       "requestType": "TruncateSessionConversationRequest_unstable",
       "responseType": "EmptyResponse"

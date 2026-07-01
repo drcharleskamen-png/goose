@@ -651,6 +651,14 @@ impl GooseAcpAgent {
         self.on_get_session_info(req).await
     }
 
+    #[custom_method(FetchSessionConversationRequest)]
+    async fn dispatch_fetch_session_conversation(
+        &self,
+        req: FetchSessionConversationRequest,
+    ) -> Result<FetchSessionConversationResponse, agent_client_protocol::Error> {
+        self.on_fetch_session_conversation(req).await
+    }
+
     #[custom_method(TruncateSessionConversationRequest)]
     async fn dispatch_truncate_session_conversation(
         &self,

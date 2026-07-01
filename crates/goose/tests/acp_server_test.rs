@@ -2,14 +2,14 @@
 #[path = "acp_common_tests/mod.rs"]
 mod common_tests;
 use agent_client_protocol::schema::v1::{
-    Annotations, ContentBlock, ListSessionsRequest, ListSessionsResponse, NewSessionRequest,
-    Role as AcpRole, SessionConfigKind, SessionConfigOptionCategory, SessionConfigOptionValue,
-    SessionInfo, SessionUpdate, SetSessionConfigOptionRequest, TextContent,
+    ListSessionsRequest, ListSessionsResponse, NewSessionRequest, SessionConfigKind,
+    SessionConfigOptionCategory, SessionConfigOptionValue, SessionInfo, SessionUpdate,
+    SetSessionConfigOptionRequest,
 };
 use agent_client_protocol::ErrorCode;
 use common_tests::fixtures::server::AcpServerConnection;
 use common_tests::fixtures::{
-    run_test, Connection, OpenAiFixture, Session, SessionData, TestConnectionConfig,
+    run_test, send_custom, Connection, OpenAiFixture, Session, SessionData, TestConnectionConfig,
 };
 #[cfg(feature = "code-mode")]
 use common_tests::run_prompt_codemode;
@@ -36,6 +36,8 @@ use std::time::Duration;
 
 tests_config_option_set_error!(AcpServerConnection);
 tests_mode_set_error!(AcpServerConnection);
+
+const TURN_CONTEXT_CLOSE: &str = r#"</turn-context>\n"#;
 
 async fn seed_list_sessions(data_root: &Path, working_dir: &Path, count: usize) {
     let session_manager = SessionManager::new(data_root.to_path_buf());
@@ -141,31 +143,62 @@ fn last_message_snippet(session: &SessionInfo) -> Option<&str> {
         .and_then(serde_json::Value::as_str)
 }
 
-fn text_chunk(update: &SessionUpdate) -> Option<&str> {
-    match update {
-        SessionUpdate::UserMessageChunk(chunk) | SessionUpdate::AgentMessageChunk(chunk) => {
-            match &chunk.content {
-                agent_client_protocol::schema::v1::ContentBlock::Text(text) => {
-                    Some(text.text.as_str())
-                }
-                _ => None,
-            }
-        }
-        _ => None,
-    }
+fn is_conversation_content_update(update: &SessionUpdate) -> bool {
+    matches!(
+        update,
+        SessionUpdate::UserMessageChunk(_)
+            | SessionUpdate::AgentMessageChunk(_)
+            | SessionUpdate::AgentThoughtChunk(_)
+            | SessionUpdate::ToolCall(_)
+            | SessionUpdate::ToolCallUpdate(_)
+    )
 }
 
-fn is_active_run_idle_update(update: &SessionUpdate) -> bool {
+fn session_info_meta_value<'a>(
+    update: &'a SessionUpdate,
+    key: &str,
+) -> Option<&'a serde_json::Value> {
     let SessionUpdate::SessionInfoUpdate(info) = update else {
-        return false;
+        return None;
     };
+    info.meta.as_ref()?.get(key)
+}
 
-    info.meta
-        .as_ref()
-        .and_then(|meta| meta.get("goose"))
+fn session_info_has_invalidation(update: &SessionUpdate, expected: &str) -> bool {
+    session_info_meta_value(update, "goose")
         .and_then(serde_json::Value::as_object)
-        .and_then(|goose| goose.get("activeRunId"))
-        .is_some_and(serde_json::Value::is_null)
+        .and_then(|goose| goose.get("invalidations"))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|invalidations| {
+            invalidations
+                .iter()
+                .any(|scope| scope.as_str() == Some(expected))
+        })
+}
+
+fn session_info_title(update: &SessionUpdate) -> Option<String> {
+    let SessionUpdate::SessionInfoUpdate(info) = update else {
+        return None;
+    };
+    serde_json::to_value(info)
+        .ok()?
+        .get("title")?
+        .as_str()
+        .map(ToString::to_string)
+}
+
+async fn wait_for_session_notification_update<F>(
+    conn: &AcpServerConnection,
+    session_id: &str,
+    predicate: F,
+) -> bool
+where
+    F: Fn(&SessionUpdate) -> bool,
+{
+    conn.wait_for_session_notification(Duration::from_secs(2), |notification| {
+        notification.session_id.0.as_ref() == session_id && predicate(&notification.update)
+    })
+    .await
 }
 
 #[test]
@@ -184,17 +217,10 @@ fn test_list_sessions() {
 }
 
 #[test]
-fn test_session_updates_broadcast_between_connections() {
+fn test_prompt_changes_broadcast_conversation_invalidation_between_connections() {
     run_test(async {
         let data_root = tempfile::tempdir().unwrap();
-        let actor_openai = OpenAiFixture::new(
-            vec![(
-                "Cross-client broadcast prompt".to_string(),
-                include_str!("acp_test_data/openai_basic.txt"),
-            )],
-            <AcpServerConnection as Connection>::expected_session_id(),
-        )
-        .await;
+        let work_dir = tempfile::tempdir().unwrap();
         let observer_openai = OpenAiFixture::new(
             vec![],
             <AcpServerConnection as Connection>::expected_session_id(),
@@ -206,17 +232,9 @@ fn test_session_updates_broadcast_between_connections() {
         )
         .await;
         let data_root_path = data_root.path().to_path_buf();
-        let mut actor = <AcpServerConnection as Connection>::new(
-            TestConnectionConfig {
-                data_root: data_root_path.clone(),
-                ..Default::default()
-            },
-            actor_openai,
-        )
-        .await;
         let mut observer = <AcpServerConnection as Connection>::new(
             TestConnectionConfig {
-                data_root: data_root_path,
+                data_root: data_root_path.clone(),
                 ..Default::default()
             },
             observer_openai,
@@ -230,12 +248,30 @@ fn test_session_updates_broadcast_between_connections() {
             list_only_openai,
         )
         .await;
+        let actor_openai = OpenAiFixture::new(
+            vec![(
+                format!("{TURN_CONTEXT_CLOSE}Cross-client broadcast prompt"),
+                include_str!("acp_test_data/openai_basic.txt"),
+            )],
+            <AcpServerConnection as Connection>::expected_session_id(),
+        )
+        .await;
+        let mut actor = <AcpServerConnection as Connection>::new(
+            TestConnectionConfig {
+                data_root: data_root_path,
+                cwd: Some(work_dir),
+                ..Default::default()
+            },
+            actor_openai,
+        )
+        .await;
 
         let SessionData {
             session: mut actor_session,
             ..
         } = actor.new_session().await.unwrap();
-        let session_id = actor_session.session_id().0.to_string();
+        let session_id = actor_session.session_id().clone();
+        let session_id_text = session_id.0.to_string();
         assert!(
             observer
                 .wait_for_session_update(Duration::from_secs(2), |update| matches!(
@@ -255,75 +291,57 @@ fn test_session_updates_broadcast_between_connections() {
             "list-only connection did not receive session_info_update for session/new"
         );
 
-        let _observer_session = observer.load_session(&session_id, vec![]).await.unwrap();
+        let _observer_session = observer
+            .load_session(&session_id_text, vec![])
+            .await
+            .unwrap();
         observer.clear_session_notifications();
         list_only.clear_session_notifications();
 
-        let prompt_task = tokio::spawn(async move {
-            actor_session
-                .prompt(
-                    "Cross-client broadcast prompt",
-                    common_tests::fixtures::PermissionDecision::Cancel,
-                )
-                .await
-                .unwrap();
-        });
+        let output = actor_session
+            .prompt(
+                "Cross-client broadcast prompt",
+                common_tests::fixtures::PermissionDecision::Cancel,
+            )
+            .await
+            .unwrap();
+        assert_eq!(output.text, "2");
 
         assert!(
-            observer
-                .wait_for_session_update(Duration::from_secs(2), |update| {
-                    matches!(
-                        update,
-                        agent_client_protocol::schema::v1::SessionUpdate::UserMessageChunk(_)
-                    ) && text_chunk(update) == Some("Cross-client broadcast prompt")
-                })
-                .await,
-            "observer did not receive live user_message_chunk"
-        );
-        prompt_task.await.unwrap();
-        let received_agent_chunk = observer
-            .wait_for_session_update(Duration::from_secs(2), |update| {
-                matches!(
-                    update,
-                    agent_client_protocol::schema::v1::SessionUpdate::AgentMessageChunk(_)
-                )
+            wait_for_session_notification_update(&observer, &session_id_text, |update| {
+                session_info_has_invalidation(update, "conversation")
             })
-            .await;
-        assert!(
-            received_agent_chunk,
-            "observer did not receive live agent_message_chunk; updates: {:#?}",
-            observer.session_updates()
+            .await,
+            "observer did not receive conversation invalidation"
         );
+
+        let observer_updates = observer.session_updates();
         assert!(
-            list_only
-                .wait_for_session_update(Duration::from_secs(2), is_active_run_idle_update)
-                .await,
-            "list-only connection did not receive active-run completion barrier"
+            !observer_updates
+                .iter()
+                .any(is_conversation_content_update),
+            "observer received content updates instead of invalidation-only updates: {observer_updates:#?}"
         );
         let list_only_updates = list_only.session_updates();
         assert!(
-            !list_only_updates.iter().any(|update| matches!(
-                update,
-                SessionUpdate::UserMessageChunk(_)
-                    | SessionUpdate::AgentMessageChunk(_)
-                    | SessionUpdate::AgentThoughtChunk(_)
-                    | SessionUpdate::ToolCall(_)
-                    | SessionUpdate::ToolCallUpdate(_)
-            )),
+            !list_only_updates.iter().any(is_conversation_content_update),
             "list-only connection received content updates: {list_only_updates:#?}"
+        );
+        assert!(
+            !list_only_updates
+                .iter()
+                .any(|update| session_info_has_invalidation(update, "conversation")),
+            "list-only connection received a conversation invalidation for an unloaded session: {list_only_updates:#?}"
         );
     });
 }
 
 #[test]
-fn test_prompt_broadcast_filters_assistant_only_content() {
+fn test_session_metadata_mutations_broadcast_between_connections() {
     run_test(async {
         let data_root = tempfile::tempdir().unwrap();
         let actor_openai = OpenAiFixture::new(
-            vec![(
-                "Visible user prompt".to_string(),
-                include_str!("acp_test_data/openai_basic.txt"),
-            )],
+            vec![],
             <AcpServerConnection as Connection>::expected_session_id(),
         )
         .await;
@@ -333,64 +351,184 @@ fn test_prompt_broadcast_filters_assistant_only_content() {
         )
         .await;
         let data_root_path = data_root.path().to_path_buf();
-        let mut observer = <AcpServerConnection as Connection>::new(
-            TestConnectionConfig {
-                data_root: data_root_path.clone(),
-                ..Default::default()
-            },
-            observer_openai,
-        )
-        .await;
         let mut actor = <AcpServerConnection as Connection>::new(
             TestConnectionConfig {
-                data_root: data_root_path,
+                data_root: data_root_path.clone(),
                 ..Default::default()
             },
             actor_openai,
         )
         .await;
+        let observer = <AcpServerConnection as Connection>::new(
+            TestConnectionConfig {
+                data_root: data_root_path,
+                ..Default::default()
+            },
+            observer_openai,
+        )
+        .await;
 
-        let SessionData {
-            session: mut actor_session,
-            ..
-        } = actor.new_session().await.unwrap();
-        let session_id = actor_session.session_id().0.to_string();
-        let _observer_session = observer.load_session(&session_id, vec![]).await.unwrap();
+        let SessionData { session, .. } = actor.new_session().await.unwrap();
+        let session_id = session.session_id().0.to_string();
+        assert!(
+            wait_for_session_notification_update(&observer, &session_id, |update| matches!(
+                update,
+                SessionUpdate::SessionInfoUpdate(_)
+            ))
+            .await,
+            "observer did not receive initial session info"
+        );
         observer.clear_session_notifications();
 
-        let output = actor_session
-            .prompt_blocks(
-                vec![
-                    ContentBlock::Text(
-                        TextContent::new("hidden assistant context")
-                            .annotations(Annotations::new().audience(vec![AcpRole::Assistant])),
-                    ),
-                    ContentBlock::Text(TextContent::new("Visible user prompt")),
-                ],
-                common_tests::fixtures::PermissionDecision::Cancel,
-            )
-            .await
-            .unwrap();
-        assert_eq!(output.text, "2");
-
+        send_custom(
+            actor.cx(),
+            "_goose/unstable/session/rename",
+            serde_json::json!({
+                "sessionId": session_id.clone(),
+                "title": "Renamed broadcast session",
+            }),
+        )
+        .await
+        .unwrap();
         assert!(
-            observer
-                .wait_for_session_update(Duration::from_secs(2), |update| {
-                    matches!(
-                        update,
-                        agent_client_protocol::schema::v1::SessionUpdate::UserMessageChunk(_)
-                    ) && text_chunk(update) == Some("Visible user prompt")
-                })
-                .await,
-            "observer did not receive visible user prompt"
+            wait_for_session_notification_update(&observer, &session_id, |update| {
+                session_info_title(update).as_deref() == Some("Renamed broadcast session")
+            })
+            .await,
+            "observer did not receive rename update"
         );
-
-        let updates = observer.session_updates();
         assert!(
-            !updates
-                .iter()
-                .any(|update| text_chunk(update) == Some("hidden assistant context")),
-            "observer received assistant-only prompt content: {updates:#?}"
+            wait_for_session_notification_update(&observer, &session_id, |update| {
+                session_info_has_invalidation(update, "session_info")
+            })
+            .await,
+            "observer did not receive rename invalidation"
+        );
+        observer.clear_session_notifications();
+
+        send_custom(
+            actor.cx(),
+            "_goose/unstable/session/project/update",
+            serde_json::json!({
+                "sessionId": session_id.clone(),
+                "projectId": "project-broadcast",
+            }),
+        )
+        .await
+        .unwrap();
+        assert!(
+            wait_for_session_notification_update(&observer, &session_id, |update| {
+                session_info_meta_value(update, "projectId").and_then(serde_json::Value::as_str)
+                    == Some("project-broadcast")
+            })
+            .await,
+            "observer did not receive project update"
+        );
+        observer.clear_session_notifications();
+
+        let updated_working_dir = tempfile::tempdir().unwrap();
+        send_custom(
+            actor.cx(),
+            "_goose/unstable/session/working-dir/update",
+            serde_json::json!({
+                "sessionId": session_id.clone(),
+                "workingDir": updated_working_dir.path().to_string_lossy().to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        assert!(
+            wait_for_session_notification_update(&observer, &session_id, |update| {
+                session_info_meta_value(update, "workingDir").and_then(serde_json::Value::as_str)
+                    == Some(updated_working_dir.path().to_string_lossy().as_ref())
+            })
+            .await,
+            "observer did not receive working directory update"
+        );
+        observer.clear_session_notifications();
+
+        send_custom(
+            actor.cx(),
+            "_goose/unstable/session/archive",
+            serde_json::json!({ "sessionId": session_id.clone() }),
+        )
+        .await
+        .unwrap();
+        assert!(
+            wait_for_session_notification_update(&observer, &session_id, |update| {
+                session_info_meta_value(update, "archivedAt").is_some()
+            })
+            .await,
+            "observer did not receive archive update"
+        );
+        observer.clear_session_notifications();
+
+        send_custom(
+            actor.cx(),
+            "_goose/unstable/session/unarchive",
+            serde_json::json!({ "sessionId": session_id.clone() }),
+        )
+        .await
+        .unwrap();
+        assert!(
+            wait_for_session_notification_update(&observer, &session_id, |update| {
+                matches!(update, SessionUpdate::SessionInfoUpdate(_))
+                    && session_info_meta_value(update, "archivedAt").is_none()
+                    && session_info_title(update).as_deref() == Some("Renamed broadcast session")
+            })
+            .await,
+            "observer did not receive unarchive update"
+        );
+        observer.clear_session_notifications();
+
+        let export = send_custom(
+            actor.cx(),
+            "_goose/unstable/session/export",
+            serde_json::json!({ "sessionId": session_id.clone() }),
+        )
+        .await
+        .unwrap();
+        let imported = send_custom(
+            actor.cx(),
+            "_goose/unstable/session/import",
+            serde_json::json!({
+                "input": export["data"],
+                "source": "json",
+            }),
+        )
+        .await
+        .unwrap();
+        let imported_session_id = imported["sessionId"].as_str().unwrap().to_string();
+        assert!(
+            wait_for_session_notification_update(&observer, &imported_session_id, |update| {
+                session_info_title(update).as_deref() == Some("Renamed broadcast session")
+            })
+            .await,
+            "observer did not receive import update"
+        );
+        observer.clear_session_notifications();
+
+        send_custom(
+            actor.cx(),
+            "session/delete",
+            serde_json::json!({ "sessionId": session_id.clone() }),
+        )
+        .await
+        .unwrap();
+        assert!(
+            wait_for_session_notification_update(&observer, &session_id, |update| {
+                session_info_meta_value(update, "deleted").and_then(serde_json::Value::as_bool)
+                    == Some(true)
+            })
+            .await,
+            "observer did not receive delete tombstone update"
+        );
+        assert!(
+            wait_for_session_notification_update(&observer, &session_id, |update| {
+                session_info_has_invalidation(update, "deleted")
+            })
+            .await,
+            "observer did not receive delete invalidation"
         );
     });
 }
@@ -699,6 +837,7 @@ fn test_get_session_info() {
             .expect("session info should include meta");
         assert!(meta.get("createdAt").and_then(|v| v.as_str()).is_some());
         assert_eq!(meta.get("messageCount"), Some(&serde_json::json!(1)));
+        assert_eq!(meta.get("conversationCursor"), Some(&serde_json::json!(1)));
         assert_eq!(meta.get("userSetName"), Some(&serde_json::json!(false)));
         assert_eq!(meta.get("sessionType"), Some(&serde_json::json!("acp")));
         assert_eq!(meta.get("hasRecipe"), Some(&serde_json::json!(false)));

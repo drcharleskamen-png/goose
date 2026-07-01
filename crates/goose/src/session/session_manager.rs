@@ -23,7 +23,7 @@ use std::sync::{Arc, LazyLock};
 use tracing::{info, warn};
 use utoipa::ToSchema;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 14;
+pub const CURRENT_SCHEMA_VERSION: i32 = 15;
 pub const SESSIONS_FOLDER: &str = "sessions";
 pub const DB_NAME: &str = "sessions.db";
 const MILLISECOND_TIMESTAMP_THRESHOLD: i64 = 10_000_000_000;
@@ -81,6 +81,8 @@ pub struct Session {
     pub user_recipe_values: Option<HashMap<String, String>>,
     pub conversation: Option<Conversation>,
     pub message_count: usize,
+    #[serde(default)]
+    pub conversation_revision: usize,
     #[serde(default)]
     pub last_message_at: Option<DateTime<Utc>>,
     pub provider_name: Option<String>,
@@ -385,6 +387,14 @@ impl SessionManager {
         self.storage.get_session(id, include_messages).await
     }
 
+    pub async fn get_conversation_since(
+        &self,
+        id: &str,
+        cursor: usize,
+    ) -> Result<(Vec<Message>, usize, bool)> {
+        self.storage.get_conversation_since(id, cursor).await
+    }
+
     pub fn update(&self, id: &str) -> SessionUpdateBuilder<'_> {
         SessionUpdateBuilder::new(self, id.to_string())
     }
@@ -642,6 +652,7 @@ impl Default for Session {
             user_recipe_values: None,
             conversation: None,
             message_count: 0,
+            conversation_revision: 0,
             last_message_at: None,
             provider_name: None,
             model_config: None,
@@ -732,6 +743,7 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for Session {
             user_recipe_values,
             conversation: None,
             message_count: row.try_get("message_count").unwrap_or(0) as usize,
+            conversation_revision: row.try_get("conversation_revision").unwrap_or(0) as usize,
             last_message_at,
             provider_name: row.try_get("provider_name").ok().flatten(),
             model_config,
@@ -795,32 +807,6 @@ impl SessionStorage {
             })
             .await?;
         Ok(&self.pool)
-    }
-
-    async fn delete_acp_session_events_if_present(
-        tx: &mut sqlx::Transaction<'_, Sqlite>,
-        session_id: &str,
-    ) -> Result<()> {
-        let table_exists = sqlx::query_scalar::<_, bool>(
-            r#"
-            SELECT EXISTS (
-                SELECT 1
-                FROM sqlite_master
-                WHERE type = 'table' AND name = 'acp_session_events'
-            )
-            "#,
-        )
-        .fetch_one(&mut **tx)
-        .await?;
-
-        if table_exists {
-            sqlx::query("DELETE FROM acp_session_events WHERE session_id = ?")
-                .bind(session_id)
-                .execute(&mut **tx)
-                .await?;
-        }
-
-        Ok(())
     }
 
     pub async fn create(session_dir: &Path) -> Result<Self> {
@@ -890,7 +876,9 @@ impl SessionStorage {
                 model_config_json TEXT,
                 goose_mode TEXT NOT NULL DEFAULT 'auto',
                 archived_at TIMESTAMP,
-                project_id TEXT
+                project_id TEXT,
+                conversation_revision INTEGER NOT NULL DEFAULT 0,
+                conversation_reset_revision INTEGER NOT NULL DEFAULT 0
             )
         "#,
         )
@@ -908,7 +896,8 @@ impl SessionStorage {
                 created_timestamp INTEGER NOT NULL,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 tokens INTEGER,
-                metadata_json TEXT
+                metadata_json TEXT,
+                conversation_revision INTEGER NOT NULL DEFAULT 0
             )
         "#,
         )
@@ -924,6 +913,11 @@ impl SessionStorage {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_messages_message_id ON messages(message_id)")
             .execute(&mut *tx)
             .await?;
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_messages_session_revision ON messages(session_id, conversation_revision)",
+        )
+        .execute(&mut *tx)
+        .await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC)")
             .execute(&mut *tx)
             .await?;
@@ -1352,6 +1346,96 @@ impl SessionStorage {
                     }
                 }
             }
+            15 => {
+                let has_conversation_revision = sqlx::query_scalar::<_, i32>(
+                    "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'conversation_revision'",
+                )
+                .fetch_one(&mut **tx)
+                .await?
+                    > 0;
+                if !has_conversation_revision {
+                    sqlx::query(
+                        "ALTER TABLE sessions ADD COLUMN conversation_revision INTEGER NOT NULL DEFAULT 0",
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+                }
+
+                let has_conversation_reset_revision = sqlx::query_scalar::<_, i32>(
+                    "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'conversation_reset_revision'",
+                )
+                .fetch_one(&mut **tx)
+                .await?
+                    > 0;
+                if !has_conversation_reset_revision {
+                    sqlx::query(
+                        "ALTER TABLE sessions ADD COLUMN conversation_reset_revision INTEGER NOT NULL DEFAULT 0",
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+                }
+
+                let has_message_conversation_revision = sqlx::query_scalar::<_, i32>(
+                    "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'conversation_revision'",
+                )
+                .fetch_one(&mut **tx)
+                .await?
+                    > 0;
+                if !has_message_conversation_revision {
+                    sqlx::query("ALTER TABLE messages ADD COLUMN conversation_revision INTEGER")
+                        .execute(&mut **tx)
+                        .await?;
+                }
+
+                sqlx::query(
+                    "CREATE INDEX IF NOT EXISTS idx_messages_session_created_id ON messages(session_id, created_timestamp, id)",
+                )
+                .execute(&mut **tx)
+                .await?;
+
+                sqlx::query(
+                    r#"
+                    WITH ranked AS (
+                        SELECT
+                            id,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY session_id
+                                ORDER BY created_timestamp, id
+                            ) AS revision
+                        FROM messages
+                    )
+                    UPDATE messages
+                    SET conversation_revision = (
+                        SELECT revision
+                        FROM ranked
+                        WHERE ranked.id = messages.id
+                    )
+                    WHERE conversation_revision IS NULL OR conversation_revision = 0
+                    "#,
+                )
+                .execute(&mut **tx)
+                .await?;
+
+                sqlx::query(
+                    r#"
+                    UPDATE sessions
+                    SET conversation_revision = COALESCE((
+                        SELECT MAX(messages.conversation_revision)
+                        FROM messages
+                        WHERE messages.session_id = sessions.id
+                    ), 0)
+                    WHERE conversation_revision = 0
+                    "#,
+                )
+                .execute(&mut **tx)
+                .await?;
+
+                sqlx::query(
+                    "CREATE INDEX IF NOT EXISTS idx_messages_session_revision ON messages(session_id, conversation_revision)",
+                )
+                .execute(&mut **tx)
+                .await?;
+            }
             _ => {
                 anyhow::bail!("Unknown migration version: {}", version);
             }
@@ -1417,7 +1501,7 @@ impl SessionStorage {
                accumulated_cost,
                schedule_id, recipe_json, user_recipe_values_json,
                provider_name, model_config_json, goose_mode,
-               archived_at, project_id
+               archived_at, project_id, conversation_revision
         FROM sessions
         WHERE id = ?
     "#,
@@ -1587,16 +1671,80 @@ impl SessionStorage {
     }
 
     async fn get_conversation(&self, session_id: &str) -> Result<Conversation> {
-        let pool = self.pool().await?;
-        let rows = sqlx::query_as::<_, (String, String, i64, Option<String>, Option<String>)>(
-            // Order by created_timestamp, then by id to break ties. created_timestamp is in seconds,
-            // so messages created in the same second (e.g., tool request and response) need to
-            // maintain their insertion order via the auto-increment id.
-            "SELECT role, content_json, created_timestamp, metadata_json, message_id FROM messages WHERE session_id = ? ORDER BY created_timestamp, id",
-        )
+        let (messages, _, _) = self.get_conversation_since(session_id, 0).await?;
+        Ok(Conversation::new_unvalidated(messages))
+    }
+
+    async fn bump_conversation_revision_tx(
+        tx: &mut sqlx::Transaction<'_, Sqlite>,
+        session_id: &str,
+        reset: bool,
+    ) -> Result<usize> {
+        let revision = if reset {
+            sqlx::query_scalar::<_, i64>(
+                r#"
+                UPDATE sessions
+                SET conversation_revision = conversation_revision + 1,
+                    conversation_reset_revision = conversation_revision + 1,
+                    updated_at = datetime('now')
+                WHERE id = ?
+                RETURNING conversation_revision
+                "#,
+            )
             .bind(session_id)
-            .fetch_all(pool)
-            .await?;
+            .fetch_one(&mut **tx)
+            .await?
+        } else {
+            sqlx::query_scalar::<_, i64>(
+                r#"
+                UPDATE sessions
+                SET conversation_revision = conversation_revision + 1,
+                    updated_at = datetime('now')
+                WHERE id = ?
+                RETURNING conversation_revision
+                "#,
+            )
+            .bind(session_id)
+            .fetch_one(&mut **tx)
+            .await?
+        };
+
+        Ok(revision as usize)
+    }
+
+    async fn get_conversation_since(
+        &self,
+        session_id: &str,
+        cursor: usize,
+    ) -> Result<(Vec<Message>, usize, bool)> {
+        let pool = self.pool().await?;
+        let (conversation_revision, conversation_reset_revision): (i64, i64) = sqlx::query_as(
+            "SELECT conversation_revision, conversation_reset_revision FROM sessions WHERE id = ?",
+        )
+        .bind(session_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Session not found: {}", session_id))?;
+
+        let next_cursor = conversation_revision as usize;
+        let reset = cursor > next_cursor || cursor < conversation_reset_revision as usize;
+        let fetch_cursor = if reset { 0 } else { cursor };
+
+        let rows = sqlx::query_as::<_, (String, String, i64, Option<String>, Option<String>)>(
+            r#"
+            SELECT role, content_json, created_timestamp, metadata_json, message_id
+            FROM messages
+            WHERE session_id = ?
+              AND conversation_revision > ?
+              AND conversation_revision <= ?
+            ORDER BY conversation_revision, id
+            "#,
+        )
+        .bind(session_id)
+        .bind(fetch_cursor as i64)
+        .bind(next_cursor as i64)
+        .fetch_all(pool)
+        .await?;
 
         let mut messages = Vec::new();
         for (role_str, content_json, created_timestamp, metadata_json, message_id) in
@@ -1621,12 +1769,14 @@ impl SessionStorage {
             messages.push(message);
         }
 
-        Ok(Conversation::new_unvalidated(messages))
+        Ok((messages, next_cursor, reset))
     }
 
     async fn add_message(&self, session_id: &str, message: &Message) -> Result<()> {
         let pool = self.pool().await?;
         let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+        let conversation_revision =
+            Self::bump_conversation_revision_tx(&mut tx, session_id, false).await?;
 
         let metadata_json = serde_json::to_string(&message.metadata)?;
 
@@ -1637,8 +1787,8 @@ impl SessionStorage {
 
         sqlx::query(
             r#"
-            INSERT INTO messages (message_id, session_id, role, content_json, created_timestamp, metadata_json)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO messages (message_id, session_id, role, content_json, created_timestamp, metadata_json, conversation_revision)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
         )
         .bind(message_id)
@@ -1647,13 +1797,9 @@ impl SessionStorage {
         .bind(serde_json::to_string(&message.content)?)
         .bind(message.created)
         .bind(metadata_json)
+        .bind(conversation_revision as i64)
         .execute(&mut *tx)
         .await?;
-
-        sqlx::query("UPDATE sessions SET updated_at = datetime('now') WHERE id = ?")
-            .bind(session_id)
-            .execute(&mut *tx)
-            .await?;
 
         tx.commit().await?;
         Ok(())
@@ -1671,7 +1817,14 @@ impl SessionStorage {
             .execute(&mut *tx)
             .await?;
 
-        for message in conversation.messages() {
+        let mut conversation_revision =
+            Self::bump_conversation_revision_tx(&mut tx, session_id, true).await?;
+
+        for (index, message) in conversation.messages().iter().enumerate() {
+            if index > 0 {
+                conversation_revision =
+                    Self::bump_conversation_revision_tx(&mut tx, session_id, false).await?;
+            }
             let metadata_json = serde_json::to_string(&message.metadata)?;
 
             let message_id = message
@@ -1681,8 +1834,8 @@ impl SessionStorage {
 
             sqlx::query(
                 r#"
-            INSERT INTO messages (message_id, session_id, role, content_json, created_timestamp, metadata_json)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO messages (message_id, session_id, role, content_json, created_timestamp, metadata_json, conversation_revision)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
             )
             .bind(message_id)
@@ -1691,6 +1844,7 @@ impl SessionStorage {
             .bind(serde_json::to_string(&message.content)?)
             .bind(message.created)
             .bind(metadata_json)
+            .bind(conversation_revision as i64)
             .execute(&mut *tx)
             .await?;
         }
@@ -1764,7 +1918,7 @@ impl SessionStorage {
                    s.accumulated_cost,
                    s.schedule_id, s.recipe_json, s.user_recipe_values_json,
                    s.provider_name, s.model_config_json, s.goose_mode,
-                   s.archived_at, s.project_id,
+                   s.archived_at, s.project_id, s.conversation_revision,
                    COUNT(m.id) as message_count,
                    MAX({}) as last_message_timestamp,
                    {} as sort_timestamp
@@ -1889,8 +2043,6 @@ impl SessionStorage {
             .bind(session_id)
             .execute(&mut *tx)
             .await?;
-
-        Self::delete_acp_session_events_if_present(&mut tx, session_id).await?;
 
         sqlx::query("DELETE FROM sessions WHERE id = ?")
             .bind(session_id)
@@ -2028,12 +2180,15 @@ impl SessionStorage {
 
     async fn truncate_conversation(&self, session_id: &str, timestamp: i64) -> Result<()> {
         let pool = self.pool().await?;
+        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
         sqlx::query("DELETE FROM messages WHERE session_id = ? AND created_timestamp >= ?")
             .bind(session_id)
             .bind(timestamp)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
 
+        Self::bump_conversation_revision_tx(&mut tx, session_id, true).await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -2063,6 +2218,7 @@ impl SessionStorage {
             .bind(boundary_id)
             .execute(&mut *tx)
             .await?;
+            Self::bump_conversation_revision_tx(&mut tx, session_id, true).await?;
         }
 
         tx.commit().await?;
@@ -2131,6 +2287,7 @@ impl SessionStorage {
         .execute(&mut *tx)
         .await?;
 
+        Self::bump_conversation_revision_tx(&mut tx, session_id, true).await?;
         tx.commit().await?;
 
         Ok(())
@@ -2185,6 +2342,7 @@ impl SessionStorage {
                 .bind(row_id)
                 .execute(&mut *tx)
                 .await?;
+            Self::bump_conversation_revision_tx(&mut tx, session_id, true).await?;
             tx.commit().await?;
             return Ok(());
         }
@@ -2487,6 +2645,79 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].id.as_deref(), Some("assistant"));
         assert_eq!(messages[0].as_concat_text(), "assistant reply");
+    }
+
+    #[tokio::test]
+    async fn test_get_conversation_since_returns_append_deltas() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+        let session = sm
+            .create_session(
+                temp_dir.path().to_path_buf(),
+                "Cursor deltas".to_string(),
+                SessionType::User,
+                GooseMode::default(),
+            )
+            .await
+            .unwrap();
+
+        sm.add_message(&session.id, &Message::user().with_text("first"))
+            .await
+            .unwrap();
+        let (messages, cursor, reset) = sm.get_conversation_since(&session.id, 0).await.unwrap();
+        assert!(!reset);
+        assert_eq!(cursor, 1);
+        assert_eq!(messages.len(), 1);
+
+        sm.add_message(&session.id, &Message::assistant().with_text("second"))
+            .await
+            .unwrap();
+        let (messages, next_cursor, reset) = sm
+            .get_conversation_since(&session.id, cursor)
+            .await
+            .unwrap();
+        assert!(!reset);
+        assert_eq!(next_cursor, 2);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].as_concat_text(), "second");
+    }
+
+    #[tokio::test]
+    async fn test_get_conversation_since_resets_after_replacement() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+        let session = sm
+            .create_session(
+                temp_dir.path().to_path_buf(),
+                "Cursor reset".to_string(),
+                SessionType::User,
+                GooseMode::default(),
+            )
+            .await
+            .unwrap();
+
+        sm.add_message(&session.id, &Message::user().with_text("first"))
+            .await
+            .unwrap();
+        let (_, cursor, _) = sm.get_conversation_since(&session.id, 0).await.unwrap();
+
+        let replacement = Conversation::new_unvalidated(vec![
+            Message::user().with_text("replacement one"),
+            Message::assistant().with_text("replacement two"),
+        ]);
+        sm.replace_conversation(&session.id, &replacement)
+            .await
+            .unwrap();
+
+        let (messages, next_cursor, reset) = sm
+            .get_conversation_since(&session.id, cursor)
+            .await
+            .unwrap();
+        assert!(reset);
+        assert_eq!(next_cursor, 3);
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].as_concat_text(), "replacement one");
+        assert_eq!(messages[1].as_concat_text(), "replacement two");
     }
 
     #[tokio::test]

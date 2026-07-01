@@ -11,7 +11,10 @@ use agent_client_protocol::schema::v1::{
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use fs_err as fs;
-use goose::acp::server::{serve, AcpProviderFactory, GooseAcpAgent, GooseAcpAgentOptions};
+use goose::acp::server::{
+    serve, AcpProviderFactory, AcpSessionNotificationEvent, GooseAcpAgent, GooseAcpAgentOptions,
+    SESSION_EVENT_CHANNEL_CAPACITY,
+};
 pub use goose::acp::{map_permission_response, PermissionDecision};
 use goose::agents::GoosePlatform;
 use goose::builtin_extension::register_builtin_extensions;
@@ -25,7 +28,7 @@ use goose::scheduler_trait::SchedulerTrait;
 use goose::session::Session as GooseSession;
 use goose::session_context::SESSION_ID_HEADER;
 use goose_test_support::{ExpectedSessionId, TEST_MODEL};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -37,6 +40,23 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 static ACP_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static ACP_CONFIG_ROOT: LazyLock<tempfile::TempDir> =
     LazyLock::new(|| tempfile::tempdir().unwrap());
+static ACP_SESSION_EVENT_CHANNELS: LazyLock<
+    Mutex<HashMap<PathBuf, tokio::sync::broadcast::Sender<AcpSessionNotificationEvent>>>,
+> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn session_event_tx_for_data_root(
+    data_root: &Path,
+) -> tokio::sync::broadcast::Sender<AcpSessionNotificationEvent> {
+    ACP_SESSION_EVENT_CHANNELS
+        .lock()
+        .unwrap()
+        .entry(data_root.to_path_buf())
+        .or_insert_with(|| {
+            let (tx, _) = tokio::sync::broadcast::channel(SESSION_EVENT_CHANNEL_CAPACITY);
+            tx
+        })
+        .clone()
+}
 
 struct FixtureScheduler {
     jobs: tokio::sync::Mutex<Vec<ScheduledJob>>,
@@ -362,6 +382,7 @@ pub async fn spawn_acp_server_in_process(
         })
     });
 
+    let session_event_tx = session_event_tx_for_data_root(data_root);
     let agent = GooseAcpAgent::new(GooseAcpAgentOptions {
         provider_factory,
         builtins: builtins.to_vec(),
@@ -371,6 +392,7 @@ pub async fn spawn_acp_server_in_process(
         goose_platform: GoosePlatform::GooseCli,
         additional_source_roots: Vec::new(),
         scheduler: Arc::new(FixtureScheduler::new()),
+        session_event_tx,
     })
     .await
     .unwrap();
@@ -478,6 +500,22 @@ pub fn to_notifications(updates: &[SessionUpdate]) -> Vec<Notification> {
 }
 
 pub fn assert_notifications(actual: &[Notification], expected: &[Notification]) {
+    let actual: Vec<_> = actual
+        .iter()
+        .filter(|notification| {
+            !matches!(
+                notification,
+                Notification::UserMessage
+                    | Notification::SessionInfoUpdate {
+                        title: None,
+                        message_count: None,
+                        user_set_name: None,
+                        ..
+                    }
+            )
+        })
+        .collect();
+    let expected: Vec<_> = expected.iter().collect();
     assert_eq!(actual, expected);
 }
 

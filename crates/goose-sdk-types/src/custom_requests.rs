@@ -1,4 +1,6 @@
-use agent_client_protocol::schema::v1::{AvailableCommand, ContentBlock, McpServer, SessionInfo};
+use agent_client_protocol::schema::v1::{
+    AvailableCommand, ContentBlock, McpServer, SessionInfo, SessionNotification,
+};
 use agent_client_protocol::{JsonRpcRequest, JsonRpcResponse};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -697,6 +699,28 @@ pub struct GetSessionInfoRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GetSessionInfoResponse {
     pub session: SessionInfo,
+}
+
+/// Fetch persisted conversation updates after a message-count cursor.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcRequest)]
+#[request(
+    method = "_goose/unstable/session/conversation/fetch",
+    response = FetchSessionConversationResponse
+)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchSessionConversationRequest {
+    pub session_id: String,
+    #[serde(default)]
+    pub cursor: usize,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcResponse)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchSessionConversationResponse {
+    pub notifications: Vec<SessionNotification>,
+    pub next_cursor: usize,
+    #[serde(default)]
+    pub reset: bool,
 }
 
 /// Truncate a session conversation from the given message timestamp onward.

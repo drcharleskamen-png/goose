@@ -602,6 +602,7 @@ mod tests {
                     Ok(AgentEvent::HistoryReplaced(_updated_conversation)) => {
                         // We should update the conversation here, but we're not reading it
                     }
+                    Ok(AgentEvent::SessionInvalidated(_)) => {}
                     Err(e) => {
                         return Err(e);
                     }

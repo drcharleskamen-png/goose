@@ -1340,6 +1340,7 @@ impl CliSession {
                         Some(Ok(AgentEvent::HistoryReplaced(updated_conversation))) => {
                             self.messages = updated_conversation;
                         }
+                        Some(Ok(AgentEvent::SessionInvalidated(_))) => {}
                         Some(Err(e)) => {
                             handle_agent_error(&e, is_stream_json_mode);
                             cancel_token_clone.cancel();

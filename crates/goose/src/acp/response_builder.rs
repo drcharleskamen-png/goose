@@ -27,6 +27,7 @@ pub(super) fn session_provider_selection(session: &Session) -> &str {
 #[serde(rename_all = "camelCase")]
 struct SessionMeta<'a> {
     message_count: usize,
+    conversation_cursor: usize,
     created_at: chrono::DateTime<chrono::Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     last_message_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -49,6 +50,7 @@ impl<'a> From<&'a Session> for SessionMeta<'a> {
     fn from(session: &'a Session) -> Self {
         Self {
             message_count: session.message_count,
+            conversation_cursor: session.conversation_revision,
             created_at: session.created_at,
             last_message_at: session.last_message_at,
             archived_at: session.archived_at,
@@ -78,6 +80,10 @@ pub(super) fn build_session_broadcast_meta(
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut meta = session_meta(session);
     meta.remove("lastMessageSnippet");
+    meta.insert(
+        "workingDir".to_string(),
+        serde_json::Value::String(session.working_dir.to_string_lossy().to_string()),
+    );
     meta
 }
 
@@ -466,6 +472,7 @@ mod tests {
             user_recipe_values: None,
             conversation: None,
             message_count: 1,
+            conversation_revision: 1,
             last_message_at: Some(now),
             provider_name: None,
             model_config: None,

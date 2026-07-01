@@ -38,6 +38,7 @@ export type Session = {
   accumulated_usage?: Usage;
   archived_at?: string | null;
   conversation?: Message[] | null;
+  conversation_revision?: number;
   created_at: string;
   extension_data: ExtensionData;
   goose_mode?: GooseMode;

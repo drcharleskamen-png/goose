@@ -95,15 +95,6 @@ impl AcpServerSession {
 
         Ok(TestOutput { text, tool_status })
     }
-
-    #[allow(dead_code)]
-    pub async fn prompt_blocks(
-        &mut self,
-        content: Vec<ContentBlock>,
-        decision: PermissionDecision,
-    ) -> anyhow::Result<TestOutput> {
-        self.send_prompt(content, decision).await
-    }
 }
 
 impl AcpServerConnection {
@@ -156,6 +147,28 @@ impl AcpServerConnection {
                     .unwrap()
                     .iter()
                     .any(|notification| predicate(&notification.update));
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub async fn wait_for_session_notification<F>(&self, timeout: Duration, predicate: F) -> bool
+    where
+        F: Fn(&SessionNotification) -> bool,
+    {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if self.updates.lock().unwrap().iter().any(&predicate) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            if tokio::time::timeout_at(deadline, self.notify.notified())
+                .await
+                .is_err()
+            {
+                return self.updates.lock().unwrap().iter().any(&predicate);
             }
         }
     }

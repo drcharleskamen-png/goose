@@ -3,6 +3,7 @@ import type {
   ListSessionsRequest,
   LoadSessionResponse,
   NewSessionRequest,
+  SessionNotification,
   SessionInfo,
 } from '@agentclientprotocol/sdk';
 import type { GooseExtension, SessionImportSource } from '@aaif/goose-sdk';
@@ -14,6 +15,7 @@ import type { Recipe } from '../recipe';
 
 interface GooseSessionInfoMeta {
   messageCount?: number;
+  conversationCursor?: number;
   createdAt?: string;
   lastMessageAt?: string;
   archivedAt?: string;
@@ -60,6 +62,12 @@ export interface AcpLoadSessionResult {
   meta: LoadSessionMeta;
 }
 
+export interface AcpFetchSessionConversationResult {
+  notifications: SessionNotification[];
+  nextCursor: number;
+  reset?: boolean;
+}
+
 const inFlightSessionLoads = new Map<string, Promise<AcpLoadSessionResult>>();
 
 function parseSessionResponseMeta(rawMeta: unknown): LoadSessionMeta {
@@ -99,6 +107,7 @@ export function sessionInfoToSession(s: SessionInfo, loadMeta: LoadSessionMeta =
     updated_at: updatedAt,
     last_message_at: meta.lastMessageAt,
     message_count: meta.messageCount ?? 0,
+    conversation_revision: meta.conversationCursor,
     extension_data: {},
     archived_at: meta.archivedAt,
     project_id: meta.projectId,
@@ -190,6 +199,24 @@ export async function acpLoadSession(sessionId: string): Promise<AcpLoadSessionR
       inFlightSessionLoads.delete(sessionId);
     }
   }
+}
+
+export async function acpFetchSessionConversation(
+  sessionId: string,
+  cursor: number
+): Promise<AcpFetchSessionConversationResult> {
+  const client = await getAcpClient();
+  const response = await client.extMethod('_goose/unstable/session/conversation/fetch', {
+    sessionId,
+    cursor,
+  });
+  const notifications = Array.isArray(response.notifications) ? response.notifications : [];
+  const nextCursor = typeof response.nextCursor === 'number' ? response.nextCursor : cursor;
+  return {
+    notifications: notifications as SessionNotification[],
+    nextCursor,
+    reset: response.reset === true,
+  };
 }
 
 export function isAcpSessionLoadInFlight(sessionId: string): boolean {
