@@ -9,8 +9,7 @@ callers construct declarative providers from JSON and stream provider
 completions.
 
 ```bash
-just python   # build bindings + run examples/uniffi/ping.py
-just kotlin   # build bindings + run examples/uniffi/Ping.kt
+just python   # build bindings + run examples/uniffi/provider.py
+just kotlin   # build bindings + run examples/uniffi/Provider.kt
 ```
 
-Both print `pong: aaif.io`.

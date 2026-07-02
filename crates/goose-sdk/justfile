@@ -22,7 +22,7 @@ _generate lang: _build
 
 python: (_generate "python")
     DYLD_LIBRARY_PATH={{lib_dir}} LD_LIBRARY_PATH={{lib_dir}} \
-        python3 {{examples_dir}}/ping.py
+        uv run --script {{examples_dir}}/provider.py
 
 kotlin: (_generate "kotlin")
     @if [ ! -f {{examples_dir}}/jna.jar ]; then \
@@ -31,8 +31,8 @@ kotlin: (_generate "kotlin")
     fi
     kotlinc -cp {{examples_dir}}/jna.jar -nowarn \
         {{gen_dir}}/io/aaif/goose/goose.kt \
-        {{examples_dir}}/Ping.kt \
-        -include-runtime -d {{examples_dir}}/ping.jar 2>/dev/null
+        {{examples_dir}}/Provider.kt \
+        -include-runtime -d {{examples_dir}}/provider.jar 2>/dev/null
     java -Djna.library.path={{lib_dir}} \
         --enable-native-access=ALL-UNNAMED \
-        -cp {{examples_dir}}/ping.jar:{{examples_dir}}/jna.jar aaif.example.PingKt
+        -cp {{examples_dir}}/provider.jar:{{examples_dir}}/jna.jar aaif.example.ProviderKt
