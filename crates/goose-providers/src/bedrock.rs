@@ -1,10 +1,15 @@
 use std::collections::HashMap;
 
-use super::base::{ConfigKey, MessageStream, Provider, ProviderDef, ProviderMetadata};
-use super::openai_compatible::{handle_status, stream_responses_compat};
-use super::retry::{ProviderRetry, RetryConfig};
+use crate::base::{ConfigKey, MessageStream, Provider, ProviderMetadata};
 use crate::conversation::message::Message;
-use crate::session_context::SESSION_ID_HEADER;
+use crate::conversation::token_usage::{ProviderUsage, Usage};
+use crate::errors::ProviderError;
+use crate::formats::openai::extract_reasoning_effort;
+use crate::formats::openai_responses::create_responses_request;
+use crate::model::ModelConfig;
+use crate::openai_compatible::{handle_status, stream_responses_compat};
+use crate::request_log::{start_log, LoggerHandleExt};
+use crate::retry::{ProviderRetry, RetryConfig};
 use anyhow::Result;
 use async_stream::try_stream;
 use async_trait::async_trait;
@@ -14,24 +19,17 @@ use aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamError;
 use aws_sdk_bedrockruntime::types::error::ConverseStreamOutputError;
 use aws_sdk_bedrockruntime::{types as bedrock, Client};
 use base64::Engine;
-use futures::future::BoxFuture;
-use goose_providers::conversation::token_usage::{ProviderUsage, Usage};
-use goose_providers::errors::ProviderError;
-use goose_providers::formats::openai::extract_reasoning_effort;
-use goose_providers::formats::openai_responses::create_responses_request;
-use goose_providers::model::ModelConfig;
-use goose_providers::request_log::{start_log, LoggerHandleExt};
 use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION};
 use rmcp::model::{object, CallToolRequestParams, ErrorCode, ErrorData, Tool};
 use serde_json::Value;
 use smithy_transport_reqwest::ReqwestHttpClient;
 
-use super::formats::bedrock::{
+use crate::formats::bedrock::{
     bedrock_anthropic_thinking_fields, bedrock_inference_config, from_bedrock_message,
     from_bedrock_usage, to_bedrock_message_with_caching, to_bedrock_tool_config,
 };
 
-pub(crate) const BEDROCK_PROVIDER_NAME: &str = "aws_bedrock";
+pub const BEDROCK_PROVIDER_NAME: &str = "aws_bedrock";
 pub const BEDROCK_DOC_LINK: &str =
     "https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html";
 
@@ -52,7 +50,7 @@ pub const BEDROCK_DEFAULT_INITIAL_RETRY_INTERVAL_MS: u64 = 2000;
 pub const BEDROCK_DEFAULT_BACKOFF_MULTIPLIER: f64 = 2.0;
 pub const BEDROCK_DEFAULT_MAX_RETRY_INTERVAL_MS: u64 = 120_000;
 
-#[derive(Debug, serde::Serialize)]
+#[derive(serde::Serialize)]
 pub struct BedrockProvider {
     #[serde(skip)]
     client: Client,
@@ -68,6 +66,22 @@ pub struct BedrockProvider {
     http_client: reqwest::Client,
     #[serde(skip)]
     mantle_base_url: Option<String>,
+    enable_caching: bool,
+    disable_streaming: bool,
+    #[serde(skip)]
+    session_id_provider: Option<SessionIdProvider>,
+}
+
+pub type SessionIdProvider = std::sync::Arc<dyn Fn() -> Option<String> + Send + Sync>;
+
+pub struct BedrockProviderConfig {
+    pub profile_name: Option<String>,
+    pub region: Option<String>,
+    pub bearer_token: Option<String>,
+    pub retry_config: RetryConfig,
+    pub enable_caching: bool,
+    pub disable_streaming: bool,
+    pub session_id_provider: Option<SessionIdProvider>,
 }
 
 /// Request inputs shared by the `Converse` and `ConverseStream` APIs.
@@ -80,71 +94,21 @@ struct ConverseRequestParts {
 }
 
 impl BedrockProvider {
-    pub async fn from_env(
-        _tls_config: Option<crate::providers::api_client::TlsConfig>,
-    ) -> Result<Self> {
-        let config = crate::config::Config::global();
-
-        // Attempt to load config and secrets to get AWS_ prefixed keys
-        // to re-export them into the environment for aws_config to use as fallback
-        let set_aws_env_vars = |res: Result<HashMap<String, Value>, _>| {
-            if let Ok(map) = res {
-                map.into_iter()
-                    .filter(|(key, _)| key.starts_with("AWS_"))
-                    .filter_map(|(key, value)| value.as_str().map(|s| (key, s.to_string())))
-                    .for_each(|(key, s)| std::env::set_var(key, s));
-            }
-        };
-
-        let filtered_secrets = config.all_secrets().map(|map| {
-            map.into_iter()
-                .filter(|(key, _)| key != "AWS_BEARER_TOKEN_BEDROCK")
-                .collect()
-        });
-
-        set_aws_env_vars(config.all_values());
-        set_aws_env_vars(filtered_secrets);
-
-        // Check for bearer token first to determine if region is required
-        let bearer_token = match config.get_secret::<String>("AWS_BEARER_TOKEN_BEDROCK") {
-            Ok(token) => {
-                let token = token.trim().to_string();
-                if token.is_empty() {
-                    None
-                } else {
-                    Some(token)
-                }
-            }
-            Err(_) => None,
-        };
-
-        // Get AWS_REGION from config if explicitly set (optional - SDK can resolve from other sources)
-        let region = match config.get_param::<String>("AWS_REGION") {
-            Ok(r) if !r.is_empty() => Some(r),
-            Ok(_) => None,
-            Err(_) => None,
-        };
-
-        // Use load_defaults() which supports AWS SSO, profiles, and environment variables
+    pub async fn from_config(config: BedrockProviderConfig) -> Result<Self> {
         let mut loader = aws_config::defaults(aws_config::BehaviorVersion::latest())
             .http_client(ReqwestHttpClient::new());
 
-        if let Ok(profile_name) = config.get_param::<String>("AWS_PROFILE") {
-            if !profile_name.is_empty() {
-                loader = loader.profile_name(&profile_name);
-            }
+        if let Some(profile_name) = config.profile_name.as_deref().filter(|s| !s.is_empty()) {
+            loader = loader.profile_name(profile_name);
         }
 
-        // Apply region to loader if explicitly configured
-        if let Some(ref region) = region {
+        if let Some(region) = config.region.as_ref() {
             loader = loader.region(aws_config::Region::new(region.clone()));
         }
 
         let sdk_config = loader.load().await;
 
-        // Validate region requirement for bearer token auth after SDK config is loaded
-        // This allows region to be resolved from ~/.aws/config, AWS_DEFAULT_REGION, etc.
-        if bearer_token.is_some() && sdk_config.region().is_none() {
+        if config.bearer_token.is_some() && sdk_config.region().is_none() {
             return Err(anyhow::anyhow!(
                 "AWS region is required when using AWS_BEARER_TOKEN_BEDROCK authentication. \
                 Set AWS_REGION, AWS_DEFAULT_REGION, or configure region in your AWS profile."
@@ -153,9 +117,7 @@ impl BedrockProvider {
 
         let resolved_region = sdk_config.region().map(|r| r.to_string());
 
-        let client = if let Some(ref token) = bearer_token {
-            // Build from sdk_config to inherit all settings (endpoint overrides, timeouts, etc.)
-            // then override authentication with bearer token
+        let client = if let Some(ref token) = config.bearer_token {
             let bedrock_config = aws_sdk_bedrockruntime::Config::new(&sdk_config)
                 .to_builder()
                 .bearer_token(aws_sdk_bedrockruntime::config::Token::new(
@@ -169,16 +131,17 @@ impl BedrockProvider {
             Self::create_client_with_credentials(&sdk_config).await?
         };
 
-        let retry_config = Self::load_retry_config(config);
-
         Ok(Self {
             client,
-            retry_config,
+            retry_config: config.retry_config,
             name: BEDROCK_PROVIDER_NAME.to_string(),
             region: resolved_region,
-            bearer_token,
+            bearer_token: config.bearer_token,
             http_client: reqwest::Client::new(),
             mantle_base_url: None,
+            enable_caching: config.enable_caching,
+            disable_streaming: config.disable_streaming,
+            session_id_provider: config.session_id_provider,
         })
     }
 
@@ -198,38 +161,8 @@ impl BedrockProvider {
         Ok(Client::new(sdk_config))
     }
 
-    fn load_retry_config(config: &crate::config::Config) -> RetryConfig {
-        let max_retries = config
-            .get_param::<usize>("BEDROCK_MAX_RETRIES")
-            .unwrap_or(BEDROCK_DEFAULT_MAX_RETRIES);
-
-        let initial_interval_ms = config
-            .get_param::<u64>("BEDROCK_INITIAL_RETRY_INTERVAL_MS")
-            .unwrap_or(BEDROCK_DEFAULT_INITIAL_RETRY_INTERVAL_MS);
-
-        let backoff_multiplier = config
-            .get_param::<f64>("BEDROCK_BACKOFF_MULTIPLIER")
-            .unwrap_or(BEDROCK_DEFAULT_BACKOFF_MULTIPLIER);
-
-        let max_interval_ms = config
-            .get_param::<u64>("BEDROCK_MAX_RETRY_INTERVAL_MS")
-            .unwrap_or(BEDROCK_DEFAULT_MAX_RETRY_INTERVAL_MS);
-
-        RetryConfig::new(
-            max_retries,
-            initial_interval_ms,
-            backoff_multiplier,
-            max_interval_ms,
-        )
-    }
-
     fn should_enable_caching(&self, model: &ModelConfig) -> bool {
-        let config = crate::config::Config::global();
-
-        let enabled = config
-            .get_param::<bool>("BEDROCK_ENABLE_CACHING")
-            .unwrap_or(false);
-        enabled && model.model_name.contains("anthropic.claude")
+        self.enable_caching && model.model_name.contains("anthropic.claude")
     }
 
     async fn post_mantle_streaming(
@@ -263,7 +196,9 @@ impl BedrockProvider {
 
         if let Some(id) = session_id.filter(|id| !id.is_empty()) {
             if let (Ok(name), Ok(value)) = (
-                HeaderName::from_bytes(SESSION_ID_HEADER.as_bytes()),
+                HeaderName::from_bytes(
+                    crate::formats::bedrock::BEDROCK_SESSION_ID_HEADER.as_bytes(),
+                ),
                 HeaderValue::from_str(id),
             ) {
                 req = req.header(name, value);
@@ -369,7 +304,8 @@ impl BedrockProvider {
             let session_id = session_id.to_string();
             request = request.mutate_request(move |req| {
                 if let Ok(value) = HeaderValue::from_str(&session_id) {
-                    req.headers_mut().insert(SESSION_ID_HEADER, value);
+                    req.headers_mut()
+                        .insert(crate::formats::bedrock::BEDROCK_SESSION_ID_HEADER, value);
                 }
             });
         }
@@ -421,10 +357,7 @@ impl BedrockProvider {
     /// blocking `Converse` behaviour in case a model or region misbehaves
     /// with `ConverseStream`.
     fn streaming_disabled(&self) -> bool {
-        let config = crate::config::Config::global();
-        config
-            .get_param::<bool>("BEDROCK_DISABLE_STREAMING")
-            .unwrap_or(false)
+        self.disable_streaming
     }
 
     /// Streaming variant of [`Self::converse`]. Builds an identical request
@@ -465,7 +398,8 @@ impl BedrockProvider {
             let session_id = session_id.to_string();
             request = request.mutate_request(move |req| {
                 if let Ok(value) = HeaderValue::from_str(&session_id) {
-                    req.headers_mut().insert(SESSION_ID_HEADER, value);
+                    req.headers_mut()
+                        .insert(crate::formats::bedrock::BEDROCK_SESSION_ID_HEADER, value);
                 }
             });
         }
@@ -538,7 +472,7 @@ impl BedrockProvider {
         )?;
 
         let provider_usage = ProviderUsage::new(model_name.to_string(), usage);
-        Ok(super::base::stream_from_single_message(
+        Ok(crate::base::stream_from_single_message(
             message,
             provider_usage,
         ))
@@ -685,7 +619,7 @@ fn process_stream_event(
     (messages, usage)
 }
 
-impl goose_providers::base::ProviderDescriptor for BedrockProvider {
+impl crate::base::ProviderDescriptor for BedrockProvider {
     fn metadata() -> ProviderMetadata {
         ProviderMetadata::new(
             BEDROCK_PROVIDER_NAME,
@@ -711,17 +645,6 @@ impl goose_providers::base::ProviderDescriptor for BedrockProvider {
     }
 }
 
-impl ProviderDef for BedrockProvider {
-    type Provider = Self;
-
-    fn from_env(
-        _extensions: Vec<crate::config::ExtensionConfig>,
-        tls_config: Option<crate::providers::api_client::TlsConfig>,
-    ) -> BoxFuture<'static, Result<Self::Provider>> {
-        Box::pin(Self::from_env(tls_config))
-    }
-}
-
 #[async_trait]
 impl Provider for BedrockProvider {
     fn get_name(&self) -> &str {
@@ -743,7 +666,11 @@ impl Provider for BedrockProvider {
         messages: &[Message],
         tools: &[Tool],
     ) -> Result<MessageStream, ProviderError> {
-        let session_id = crate::session_context::current_session_id().unwrap_or_default();
+        let session_id = self
+            .session_id_provider
+            .as_ref()
+            .and_then(|provider| provider())
+            .unwrap_or_default();
         let session_id_opt = if session_id.is_empty() {
             None
         } else {
@@ -912,7 +839,7 @@ impl Provider for BedrockProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use goose_providers::base::ProviderDescriptor as _;
+    use crate::base::ProviderDescriptor as _;
     use serial_test::serial;
 
     fn create_mock_provider_and_model(model_name: &str) -> (BedrockProvider, ModelConfig) {
@@ -1105,7 +1032,7 @@ mod tests {
             mantle_base_url: Some(format!("{}/openai/v1/responses", server.uri())),
         };
 
-        let messages = vec![crate::conversation::message::Message::user().with_text("hi")];
+        let messages = vec![Message::user().with_text("hi")];
         let mut stream = provider
             .stream(&model.clone(), "", &messages, &[])
             .await

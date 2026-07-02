@@ -12,7 +12,11 @@ pub mod azure;
 pub mod azureauth;
 pub mod base;
 #[cfg(feature = "aws-providers")]
-pub mod bedrock;
+pub mod bedrock {
+    pub use goose_providers::bedrock::*;
+}
+#[cfg(feature = "aws-providers")]
+pub mod bedrock_def;
 pub mod canonical {
     pub use goose_providers::canonical::*;
 }

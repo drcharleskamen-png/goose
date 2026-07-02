@@ -16,3 +16,6 @@ pub mod openai;
 pub mod openai_compatible;
 
 pub use declarative::declarative_providers::*;
+
+#[cfg(feature = "aws-providers")]
+pub mod bedrock;

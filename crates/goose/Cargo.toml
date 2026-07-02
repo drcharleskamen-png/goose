@@ -36,6 +36,7 @@ aws-providers = [
     "dep:aws-sdk-bedrockruntime",
     "dep:aws-sdk-sagemakerruntime",
     "dep:smithy-transport-reqwest",
+    "goose-providers/aws-providers",
 ]
 cuda = ["local-inference", "candle-core/cuda", "candle-nn/cuda", "goose-providers/cuda"]
 vulkan = ["local-inference", "goose-providers/vulkan"]

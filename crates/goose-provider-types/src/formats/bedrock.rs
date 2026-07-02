@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::mcp_utils::ToolResult;
 use anyhow::{anyhow, bail, Result};
 use aws_sdk_bedrockruntime::types as bedrock;
 use aws_smithy_types::{Document, Number};
@@ -14,15 +13,16 @@ use rmcp::model::{
 };
 use serde_json::Value;
 
-use crate::conversation::message::{Message, MessageContent};
-use crate::providers::bedrock::BEDROCK_PROVIDER_NAME;
-use crate::providers::canonical::maybe_get_canonical_model;
-use crate::providers::formats::anthropic::{
+use crate::conversation::message::{Message, MessageContent, ToolResult};
+pub const BEDROCK_PROVIDER_NAME: &str = "aws_bedrock";
+pub const BEDROCK_SESSION_ID_HEADER: &str = "X-Goose-Session-ID";
+use crate::canonical::maybe_get_canonical_model;
+use crate::conversation::token_usage::Usage;
+use crate::formats::anthropic::{
     adaptive_output_effort, model_supports_temperature, thinking_budget_tokens,
     thinking_type_for_provider, ThinkingType, ANTHROPIC_PROVIDER_NAME, MIN_ANSWER_TOKENS,
 };
-use goose_providers::conversation::token_usage::Usage;
-use goose_providers::model::ModelConfig;
+use crate::model::ModelConfig;
 use once_cell::sync::Lazy;
 use regex::Regex;
 

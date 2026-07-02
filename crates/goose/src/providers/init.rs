@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 #[cfg(feature = "aws-providers")]
-use super::bedrock::BedrockProvider;
+use super::bedrock_def::BedrockProviderDef;
 #[cfg(feature = "local-inference")]
 use super::local_inference::LocalInferenceProvider;
 #[cfg(feature = "aws-providers")]
@@ -70,7 +70,7 @@ async fn init_registry() -> RwLock<ProviderRegistry> {
         registry.register::<AvianProvider>(false);
         registry.register::<AzureProvider>(false);
         #[cfg(feature = "aws-providers")]
-        registry.register::<BedrockProvider>(false);
+        registry.register::<BedrockProviderDef>(false);
         #[cfg(feature = "local-inference")]
         registry.register::<LocalInferenceProvider>(false);
         registry.register_with_inventory::<ChatGptCodexProvider>(

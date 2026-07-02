@@ -2,7 +2,9 @@ pub mod anthropic {
     pub use goose_providers::formats::anthropic::*;
 }
 #[cfg(feature = "aws-providers")]
-pub mod bedrock;
+pub mod bedrock {
+    pub use goose_providers::formats::bedrock::*;
+}
 pub mod databricks {
     pub use goose_providers::formats::databricks::*;
 }
