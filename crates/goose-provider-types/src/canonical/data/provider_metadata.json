@@ -384,7 +384,7 @@
     "env": [
       "GITHUB_TOKEN"
     ],
-    "model_count": 23
+    "model_count": 25
   },
   {
     "id": "github-models",
@@ -506,6 +506,17 @@
       "JIEKOU_API_KEY"
     ],
     "model_count": 61
+  },
+  {
+    "id": "kenari",
+    "display_name": "Kenari",
+    "npm": "@ai-sdk/openai-compatible",
+    "api": "https://kenari.id/v1",
+    "doc": "https://kenari.id/docs",
+    "env": [
+      "KENARI_API_KEY"
+    ],
+    "model_count": 23
   },
   {
     "id": "kilo",
@@ -1058,7 +1069,7 @@
     "env": [
       "STEPFUN_API_KEY"
     ],
-    "model_count": 5
+    "model_count": 8
   },
   {
     "id": "stepfun-ai",
@@ -1069,7 +1080,7 @@
     "env": [
       "STEPFUN_API_KEY"
     ],
-    "model_count": 2
+    "model_count": 8
   },
   {
     "id": "subconscious",
@@ -1145,6 +1156,17 @@
     "doc": "https://docs.tinfoil.sh",
     "env": [
       "TINFOIL_API_KEY"
+    ],
+    "model_count": 7
+  },
+  {
+    "id": "trustedrouter",
+    "display_name": "TrustedRouter",
+    "npm": "@ai-sdk/openai-compatible",
+    "api": "https://api.trustedrouter.com/v1",
+    "doc": "https://trustedrouter.com/docs",
+    "env": [
+      "TRUSTEDROUTER_API_KEY"
     ],
     "model_count": 7
   },
@@ -1322,7 +1344,7 @@
     "env": [
       "ZENMUX_API_KEY"
     ],
-    "model_count": 112
+    "model_count": 114
   },
   {
     "id": "zhipuai",
