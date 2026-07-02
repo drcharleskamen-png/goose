@@ -40,7 +40,7 @@ Compile and run:
 
 ```bash
 kotlinc -cp crates/goose-sdk/examples/uniffi/jna.jar -nowarn \
-  crates/goose-sdk/generated/aaif/goose/aaif_goose.kt \
+  crates/goose-sdk/generated/io/aaif/goose/goose.kt \
   crates/goose-sdk/examples/uniffi/Provider.kt \
   -include-runtime -d crates/goose-sdk/examples/uniffi/provider.jar
 

@@ -1,9 +1,9 @@
 package aaif.example
 
-import aaif.goose.DeclarativeProvider
-import aaif.goose.MessageRole
-import aaif.goose.ProviderMessage
-import aaif.goose.ProviderModelConfig
+import io.aaif.goose.DeclarativeProvider
+import io.aaif.goose.MessageRole
+import io.aaif.goose.ProviderMessage
+import io.aaif.goose.ProviderModelConfig
 import java.nio.file.Paths
 
 fun main() {

@@ -1,6 +1,6 @@
 package aaif.example
 
-import aaif.goose.Client
+import io.aaif.goose.Client
 
 fun main() {
     val client = Client()

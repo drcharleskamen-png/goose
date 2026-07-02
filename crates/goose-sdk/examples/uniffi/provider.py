@@ -7,7 +7,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent / "generated"))
 
-from aaif_goose import (  # noqa: E402
+from goose import (  # noqa: E402
     DeclarativeProvider,
     MessageRole,
     ProviderMessage,

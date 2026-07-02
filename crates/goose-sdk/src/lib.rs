@@ -13,7 +13,7 @@
 pub use goose_sdk_types::{custom_notifications, custom_requests};
 
 #[cfg(feature = "uniffi")]
-uniffi::setup_scaffolding!("aaif_goose");
+uniffi::setup_scaffolding!("goose");
 
 #[cfg(feature = "uniffi")]
 pub mod bindings;
