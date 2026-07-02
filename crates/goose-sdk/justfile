@@ -2,27 +2,36 @@ set shell := ["bash", "-cu"]
 set working-directory := '../..'
 
 lib_ext := if os() == "macos" { "dylib" } else if os() == "windows" { "dll" } else { "so" }
-lib_dir := "./target/debug"
-lib_path := lib_dir / "libgoose_sdk." + lib_ext
+lib_prefix := if os() == "windows" { "" } else { "lib" }
+lib_name := lib_prefix + "goose_sdk." + lib_ext
+debug_lib_dir := "./target/debug"
+release_lib_dir := "./target/release"
+debug_lib_path := debug_lib_dir / lib_name
+release_lib_path := release_lib_dir / lib_name
 bindgen := "./target/debug/goose-uniffi-bindgen"
 config := "./crates/goose-sdk/uniffi.toml"
 gen_dir := "./crates/goose-sdk/generated"
 examples_dir := "./crates/goose-sdk/examples/uniffi"
+python_dir := "./crates/goose-sdk/python"
+python_package_dir := python_dir / "src/aaif_goose"
 
-default:
+_default:
     @just --list --justfile {{justfile()}}
 
 _build:
     cargo build -p goose-sdk --features uniffi -q
 
+_build-release:
+    cargo build -p goose-sdk --features uniffi --release -q
+
 _generate lang: _build
-    {{bindgen}} generate --library {{lib_path}} --config {{config}} --language {{lang}} --no-format --out-dir {{gen_dir}} 2>/dev/null
-    cp {{lib_path}} {{gen_dir}}/
+    {{bindgen}} generate --library {{debug_lib_path}} --config {{config}} --language {{lang}} --no-format --out-dir {{gen_dir}} 2>/dev/null
+    cp {{debug_lib_path}} {{gen_dir}}/
     touch {{gen_dir}}/__init__.py
 
 python: (_generate "python")
-    DYLD_LIBRARY_PATH={{lib_dir}} LD_LIBRARY_PATH={{lib_dir}} \
-        uv run --script {{examples_dir}}/provider.py
+    DYLD_LIBRARY_PATH={{debug_lib_dir}} LD_LIBRARY_PATH={{debug_lib_dir}} \
+        python3 {{examples_dir}}/provider.py
 
 kotlin: (_generate "kotlin")
     @if [ ! -f {{examples_dir}}/jna.jar ]; then \
@@ -30,9 +39,25 @@ kotlin: (_generate "kotlin")
             https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar; \
     fi
     kotlinc -cp {{examples_dir}}/jna.jar -nowarn \
-        {{gen_dir}}/io/aaif/goose/goose.kt \
+        {{gen_dir}}/aaif/goose/aaif_goose.kt \
         {{examples_dir}}/Provider.kt \
         -include-runtime -d {{examples_dir}}/provider.jar 2>/dev/null
-    java -Djna.library.path={{lib_dir}} \
+    java -Djna.library.path={{debug_lib_dir}} \
         --enable-native-access=ALL-UNNAMED \
         -cp {{examples_dir}}/provider.jar:{{examples_dir}}/jna.jar aaif.example.ProviderKt
+
+python-bindings: _build-release
+    rm -rf {{python_package_dir}}
+    mkdir -p {{python_package_dir}}
+    {{bindgen}} generate --library {{release_lib_path}} --config {{config}} --language python --no-format --out-dir {{python_package_dir}} 2>/dev/null
+    mv {{python_package_dir}}/aaif_goose.py {{python_package_dir}}/__init__.py
+    cp {{release_lib_path}} {{python_package_dir}}/
+    touch {{python_package_dir}}/py.typed
+
+python-wheel: python-bindings
+    rm -rf {{python_dir}}/build {{python_dir}}/dist {{python_dir}}/*.egg-info {{python_dir}}/src/*.egg-info
+    cd {{python_dir}} && uvx --from build pyproject-build --wheel
+
+python-check: python-wheel
+    python3 -m pip install --force-reinstall {{python_dir}}/dist/*.whl
+    python3 -c 'import aaif_goose; print(aaif_goose.__name__)'

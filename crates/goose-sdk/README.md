@@ -13,3 +13,14 @@ just python   # build bindings + run examples/uniffi/provider.py
 just kotlin   # build bindings + run examples/uniffi/Provider.kt
 ```
 
+## Python package
+
+The PyPI package is published as `aaif-goose` and imports as `aaif_goose`.
+Build a local wheel from the repository root with:
+
+```bash
+just --justfile crates/goose-sdk/justfile python-wheel
+```
+
+This regenerates the UniFFI Python bindings, copies the release native library
+into the package, and writes the wheel to `crates/goose-sdk/python/dist/`.
