@@ -38,7 +38,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
 
       - name: Set up Python
-        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
@@ -49,12 +49,12 @@ jobs:
           sudo apt-get install -y pkg-config libssl-dev
 
       - name: Install uv
-        uses: astral-sh/setup-uv@7edac99f961f18b581bbd960d59d049f04c0002f # v7.0.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           enable-cache: true
 
       - name: Install just
-        uses: extractions/setup-just@69d82fb0233557aec017ef13706851d0694e0f57 # v3.0.0
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -76,7 +76,7 @@ jobs:
           "$python_bin" -c 'import goose; print(goose.__name__)'
 
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@2848b2cda0e5190984587ec6bb1f36730ca78d50 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: goose-sdk-wheel-${{ matrix.name }}
           path: crates/goose-sdk/python/dist/*.whl
@@ -90,13 +90,13 @@ jobs:
     environment: pypi
     steps:
       - name: Download wheel artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: goose-sdk-wheel-*
           path: dist
           merge-multiple: true
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
         with:
           packages-dir: dist
