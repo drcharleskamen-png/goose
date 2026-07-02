@@ -175,6 +175,28 @@ async fn authenticated_acp_router_allows_packaged_desktop_null_websocket_origin(
 }
 
 #[tokio::test]
+async fn authenticated_acp_router_allows_packaged_desktop_file_websocket_origin() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_authenticated_acp_router(&dir);
+
+    let status = send(
+        &router,
+        Method::GET,
+        &format!("/acp?token={SECRET}"),
+        &[
+            ("origin", "file://"),
+            ("connection", "upgrade"),
+            ("upgrade", "websocket"),
+            ("sec-websocket-version", "13"),
+            ("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ=="),
+        ],
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::NOT_ACCEPTABLE);
+}
+
+#[tokio::test]
 async fn serve_router_rejects_null_websocket_origin_by_default() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_router(false, &dir);
@@ -185,6 +207,28 @@ async fn serve_router_rejects_null_websocket_origin_by_default() {
         "/acp",
         &[
             ("origin", "null"),
+            ("connection", "upgrade"),
+            ("upgrade", "websocket"),
+            ("sec-websocket-version", "13"),
+            ("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ=="),
+        ],
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn serve_router_rejects_file_websocket_origin_by_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_router(false, &dir);
+
+    let status = send(
+        &router,
+        Method::GET,
+        "/acp",
+        &[
+            ("origin", "file://"),
             ("connection", "upgrade"),
             ("upgrade", "websocket"),
             ("sec-websocket-version", "13"),
@@ -515,6 +559,36 @@ async fn authenticated_acp_cors_allows_packaged_desktop_null_origin() {
 }
 
 #[tokio::test]
+async fn authenticated_acp_cors_allows_packaged_desktop_file_origin() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_authenticated_acp_router(&dir);
+
+    let response = send_response(
+        &router,
+        Method::OPTIONS,
+        "/acp",
+        &[
+            ("Origin", "file://"),
+            ("Access-Control-Request-Method", "POST"),
+            (
+                "Access-Control-Request-Headers",
+                "content-type,x-secret-key,acp-connection-id",
+            ),
+        ],
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .and_then(|value| value.to_str().ok()),
+        Some("file://")
+    );
+}
+
+#[tokio::test]
 async fn serve_cors_rejects_null_origin_by_default() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_router(false, &dir);
@@ -525,6 +599,32 @@ async fn serve_cors_rejects_null_origin_by_default() {
         "/acp",
         &[
             ("Origin", "null"),
+            ("Access-Control-Request-Method", "POST"),
+            (
+                "Access-Control-Request-Headers",
+                "content-type,x-secret-key,acp-connection-id",
+            ),
+        ],
+    )
+    .await;
+
+    assert!(response
+        .headers()
+        .get("access-control-allow-origin")
+        .is_none());
+}
+
+#[tokio::test]
+async fn serve_cors_rejects_file_origin_by_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_router(false, &dir);
+
+    let response = send_response(
+        &router,
+        Method::OPTIONS,
+        "/acp",
+        &[
+            ("Origin", "file://"),
             ("Access-Control-Request-Method", "POST"),
             (
                 "Access-Control-Request-Headers",

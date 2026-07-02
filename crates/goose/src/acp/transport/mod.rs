@@ -21,7 +21,8 @@ use crate::acp::server_factory::AcpServer;
 // The upstream ACP HTTP server only supports exact origin allowlists for
 // WebSocket upgrades; Goose applies its richer loopback predicate before this.
 const UPSTREAM_WS_ALLOWED_ORIGIN: &str = "http://goose.local";
-const DESKTOP_FILE_ORIGIN: &str = "null";
+const DESKTOP_OPAQUE_ORIGIN: &str = "null";
+const DESKTOP_FILE_ORIGIN: &str = "file://";
 
 #[derive(Clone)]
 struct AcpOriginPolicy {
@@ -206,7 +207,10 @@ pub fn create_acp_router(server: Arc<AcpServer>) -> Router {
 pub fn create_authenticated_acp_router(server: Arc<AcpServer>, secret_key: String) -> Router {
     create_acp_router_with_policy(
         server,
-        AcpOriginPolicy::loopback_and(vec![HeaderValue::from_static(DESKTOP_FILE_ORIGIN)]),
+        AcpOriginPolicy::loopback_and(vec![
+            HeaderValue::from_static(DESKTOP_OPAQUE_ORIGIN),
+            HeaderValue::from_static(DESKTOP_FILE_ORIGIN),
+        ]),
         Some(secret_key),
     )
 }
