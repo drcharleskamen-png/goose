@@ -75,3 +75,22 @@ python-publish repository="pypi": python-wheel
     else \
         UV_NO_CONFIG=1 PIP_CONFIG_FILE=/dev/null PIP_INDEX_URL=https://pypi.org/simple uvx --default-index https://pypi.org/simple twine upload --repository {{repository}} {{python_dir}}/dist/*.whl; \
     fi
+
+crates-publish dry_run="true":
+    @set -euo pipefail; \
+    dry_run_flag=""; \
+    if [ "{{dry_run}}" = "true" ]; then \
+        dry_run_flag="--dry-run"; \
+    elif [ "{{dry_run}}" != "false" ]; then \
+        echo 'dry_run must be true or false' >&2; \
+        exit 1; \
+    fi; \
+    for crate in \
+        goose-provider-types \
+        goose-sdk-types \
+        goose-download-manager \
+        goose-local-inference \
+        goose-providers \
+        goose-sdk; do \
+        cargo publish -p "$crate" $dry_run_flag --allow-dirty; \
+    done
