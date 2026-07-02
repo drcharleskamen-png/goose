@@ -73,8 +73,6 @@ Note that IDs have been changed to generic ones
     nip: 61
 
 </details>
-:::
-
 
 
 # NIP-61: Implementing Nutzaps

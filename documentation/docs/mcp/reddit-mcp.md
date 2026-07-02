@@ -43,6 +43,10 @@ Note that you'll need [uv](https://docs.astral.sh/uv/#installation) installed on
       description="Fetch and analyze Reddit content"
       command="uvx"
       args={["--from", "git+https://github.com/adhikasp/mcp-reddit.git", "mcp-reddit"]}
+      envVars={[
+        { name: "REDDIT_CLIENT_ID", label: "Reddit client ID" },
+        { name: "REDDIT_CLIENT_SECRET", label: "Reddit client secret" }
+      ]}
     />
   </TabItem>
 
@@ -51,6 +55,10 @@ Note that you'll need [uv](https://docs.astral.sh/uv/#installation) installed on
       name="Reddit MCP"
       description="Fetch and analyze Reddit content"
       command="uvx --from git+https://github.com/adhikasp/mcp-reddit.git mcp-reddit"
+      envVars={[
+        { key: "REDDIT_CLIENT_ID", value: "your_client_id" },
+        { key: "REDDIT_CLIENT_SECRET", value: "your_client_secret" }
+      ]}
       timeout={300}
     />
   </TabItem>
