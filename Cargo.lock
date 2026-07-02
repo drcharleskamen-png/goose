@@ -5199,6 +5199,7 @@ dependencies = [
  "sec1",
  "serde",
  "serde_json",
+ "serial_test",
  "smithy-transport-reqwest",
  "tempfile",
  "test-case",

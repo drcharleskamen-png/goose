@@ -858,6 +858,9 @@ mod tests {
                 bearer_token: None,
                 http_client: reqwest::Client::new(),
                 mantle_base_url: None,
+                enable_caching: false,
+                disable_streaming: false,
+                session_id_provider: None,
             },
             ModelConfig {
                 model_name: model_name.to_string(),
@@ -1030,6 +1033,9 @@ mod tests {
             bearer_token: Some("test-token".to_string()),
             http_client: reqwest::Client::new(),
             mantle_base_url: Some(format!("{}/openai/v1/responses", server.uri())),
+            enable_caching: false,
+            disable_streaming: false,
+            session_id_provider: None,
         };
 
         let messages = vec![Message::user().with_text("hi")];

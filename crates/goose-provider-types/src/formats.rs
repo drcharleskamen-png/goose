@@ -1,7 +1,6 @@
 pub mod anthropic;
+pub mod bedrock;
 pub mod databricks;
 pub mod ollama;
 pub mod openai;
 pub mod openai_responses;
-
-pub mod bedrock;

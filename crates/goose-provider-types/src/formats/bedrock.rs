@@ -608,9 +608,10 @@ pub fn from_bedrock_json(document: &Document) -> Result<Value> {
 mod tests {
     use super::*;
     use anyhow::Result;
-    use goose_test_support::TEST_IMAGE_B64;
     use rmcp::model::{AnnotateAble, RawImageContent};
     use serde_json::json;
+
+    const TEST_IMAGE_B64: &str = include_str!("../../tests/assets/test_image.b64");
 
     #[test]
     fn test_bedrock_anthropic_thinking_fields_enabled() {
