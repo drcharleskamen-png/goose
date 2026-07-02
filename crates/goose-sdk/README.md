@@ -15,7 +15,7 @@ just kotlin   # build bindings + run examples/uniffi/Provider.kt
 
 ## Python package
 
-The PyPI package is published as `aaif-goose` and imports as `aaif_goose`.
+The PyPI package is published as `goose-sdk` and imports as `goose`.
 Build a local wheel from the repository root with:
 
 ```bash

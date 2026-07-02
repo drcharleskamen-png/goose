@@ -13,7 +13,7 @@ config := "./crates/goose-sdk/uniffi.toml"
 gen_dir := "./crates/goose-sdk/generated"
 examples_dir := "./crates/goose-sdk/examples/uniffi"
 python_dir := "./crates/goose-sdk/python"
-python_package_dir := python_dir / "src/aaif_goose"
+python_package_dir := python_dir / "src/goose"
 
 _default:
     @just --list --justfile {{justfile()}}
@@ -50,14 +50,14 @@ python-bindings: _build-release
     rm -rf {{python_package_dir}}
     mkdir -p {{python_package_dir}}
     {{bindgen}} generate --library {{release_lib_path}} --config {{config}} --language python --no-format --out-dir {{python_package_dir}} 2>/dev/null
-    mv {{python_package_dir}}/aaif_goose.py {{python_package_dir}}/__init__.py
+    mv {{python_package_dir}}/goose.py {{python_package_dir}}/__init__.py
     cp {{release_lib_path}} {{python_package_dir}}/
     touch {{python_package_dir}}/py.typed
 
 python-wheel: python-bindings
     rm -rf {{python_dir}}/build {{python_dir}}/dist {{python_dir}}/*.egg-info {{python_dir}}/src/*.egg-info
-    cd {{python_dir}} && uvx --from build pyproject-build --wheel
+    cd {{python_dir}} && UV_NO_CONFIG=1 PIP_CONFIG_FILE=/dev/null PIP_INDEX_URL=https://pypi.org/simple uvx --default-index https://pypi.org/simple --from build pyproject-build --wheel
 
 python-check: python-wheel
     python3 -m pip install --force-reinstall {{python_dir}}/dist/*.whl
-    python3 -c 'import aaif_goose; print(aaif_goose.__name__)'
+    python3 -c 'import goose; print(goose.__name__)'

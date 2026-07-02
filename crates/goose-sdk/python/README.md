@@ -1,4 +1,4 @@
-# aaif-goose
+# goose-sdk
 
 Python bindings for the Goose SDK.
 

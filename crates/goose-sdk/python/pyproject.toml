@@ -3,7 +3,7 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aaif-goose"
+name = "goose-sdk"
 version = "0.1.0a1"
 description = "Python bindings for the Goose SDK"
 readme = "README.md"
@@ -31,4 +31,4 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-aaif_goose = ["*.so", "*.dylib", "*.dll", "py.typed"]
+goose = ["*.so", "*.dylib", "*.dll", "py.typed"]
