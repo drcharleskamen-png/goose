@@ -45,7 +45,7 @@ const i18n = defineMessages({
   },
   viewModelInteractions: {
     id: 'sessionActionsHeader.viewModelInteractions',
-    defaultMessage: 'View model interactions',
+    defaultMessage: 'View recent model interactions',
   },
   renameTitle: {
     id: 'sessionActionsHeader.renameTitle',
@@ -89,7 +89,7 @@ const i18n = defineMessages({
   },
   modelInteractionsTitle: {
     id: 'sessionActionsHeader.modelInteractionsTitle',
-    defaultMessage: 'Model interactions',
+    defaultMessage: 'Recent model interactions',
   },
   loadingJson: {
     id: 'sessionActionsHeader.loadingJson',
@@ -117,7 +117,7 @@ const i18n = defineMessages({
   },
   copiedModelInteractions: {
     id: 'sessionActionsHeader.copiedModelInteractions',
-    defaultMessage: 'Model interactions copied',
+    defaultMessage: 'Recent model interactions copied',
   },
   fullTextTitle: {
     id: 'sessionActionsHeader.fullTextTitle',

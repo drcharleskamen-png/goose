@@ -3594,7 +3594,7 @@
     "defaultMessage": "Session JSON copied"
   },
   "sessionActionsHeader.copiedModelInteractions": {
-    "defaultMessage": "Model interactions copied"
+    "defaultMessage": "Recent model interactions copied"
   },
   "sessionActionsHeader.copiedText": {
     "defaultMessage": "Text copied"
@@ -3630,7 +3630,7 @@
     "defaultMessage": "Failed to load model interactions: {error}"
   },
   "sessionActionsHeader.modelInteractionsTitle": {
-    "defaultMessage": "Model interactions"
+    "defaultMessage": "Recent model interactions"
   },
   "sessionActionsHeader.renameFailed": {
     "defaultMessage": "Failed to rename session: {error}"
@@ -3657,7 +3657,7 @@
     "defaultMessage": "View session JSON"
   },
   "sessionActionsHeader.viewModelInteractions": {
-    "defaultMessage": "View model interactions"
+    "defaultMessage": "View recent model interactions"
   },
   "sessionIndicators.error": {
     "defaultMessage": "Session encountered an error"
