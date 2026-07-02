@@ -33,10 +33,13 @@ pub async fn from_env(tls_config: Option<TlsConfig>) -> Result<GoogleProvider> {
         .get_param("GOOGLE_HOST")
         .unwrap_or_else(|_| GOOGLE_API_HOST.to_string());
 
+    let thinking_budget = config.get_param("GEMINI25_THINKING_BUDGET").ok();
+
     GoogleProvider::new(
         host,
         api_key,
         tls_config,
         Some(crate::session_context::session_id_request_builder()),
+        thinking_budget,
     )
 }

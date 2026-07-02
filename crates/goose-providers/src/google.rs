@@ -6,7 +6,7 @@ use crate::openai_compatible::{handle_status, map_http_error_to_provider_error, 
 use crate::retry::ProviderRetry;
 
 use crate::base::{ConfigKey, Provider, ProviderMetadata};
-use crate::formats::google::{create_request, response_to_streaming_message};
+use crate::formats::google::{create_request_with_thinking_budget, response_to_streaming_message};
 use crate::model::ModelConfig;
 use crate::request_log::{start_log, LoggerHandleExt};
 use anyhow::Result;
@@ -61,6 +61,8 @@ pub struct GoogleProvider {
     api_client: ApiClient,
     #[serde(skip)]
     name: String,
+    #[serde(skip)]
+    thinking_budget: Option<i32>,
 }
 
 impl GoogleProvider {
@@ -69,6 +71,7 @@ impl GoogleProvider {
         api_key: String,
         tls_config: Option<crate::api_client::TlsConfig>,
         request_builder: Option<crate::api_client::RequestBuilderDecorator>,
+        thinking_budget: Option<i32>,
     ) -> Result<Self> {
         let auth = AuthMethod::ApiKey {
             header_name: "x-goog-api-key".to_string(),
@@ -84,6 +87,7 @@ impl GoogleProvider {
         Ok(Self {
             api_client,
             name: GOOGLE_PROVIDER_NAME.to_string(),
+            thinking_budget,
         })
     }
 
@@ -167,7 +171,13 @@ impl Provider for GoogleProvider {
         messages: &[Message],
         tools: &[Tool],
     ) -> Result<MessageStream, ProviderError> {
-        let payload = create_request(model_config, system, messages, tools)?;
+        let payload = create_request_with_thinking_budget(
+            model_config,
+            system,
+            messages,
+            tools,
+            self.thinking_budget,
+        )?;
         let mut log = start_log(model_config, &payload)?;
 
         let response = self
