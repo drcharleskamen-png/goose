@@ -36,7 +36,7 @@ async-stream = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 goose-provider-types = { version = "0.1.0-alpha.0", path = "../goose-provider-types", default-features = false }
-goose-local-inference = { path = "../goose-local-inference", default-features = false, optional = true }
+goose-local-inference = { version = "0.1.0-alpha.0", path = "../goose-local-inference", default-features = false, optional = true }
 reqwest = { workspace = true }
 rmcp = { workspace = true, features = ["server", "macros"] }
 serde = { workspace = true }

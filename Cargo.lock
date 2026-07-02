@@ -5078,7 +5078,7 @@ dependencies = [
 
 [[package]]
 name = "goose-local-inference"
-version = "1.41.0"
+version = "0.1.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-stream",

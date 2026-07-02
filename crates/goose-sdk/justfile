@@ -8,7 +8,8 @@ debug_lib_dir := "./target/debug"
 release_lib_dir := "./target/release"
 debug_lib_path := debug_lib_dir / lib_name
 release_lib_path := release_lib_dir / lib_name
-bindgen := "./target/debug/goose-uniffi-bindgen"
+debug_bindgen := "./target/debug/goose-uniffi-bindgen"
+release_bindgen := "./target/release/goose-uniffi-bindgen"
 config := "./crates/goose-sdk/uniffi.toml"
 gen_dir := "./crates/goose-sdk/generated"
 examples_dir := "./crates/goose-sdk/examples/uniffi"
@@ -25,7 +26,7 @@ _build-release:
     cargo build -p goose-sdk --features uniffi --release -q
 
 _generate lang: _build
-    {{bindgen}} generate --library {{debug_lib_path}} --config {{config}} --language {{lang}} --no-format --out-dir {{gen_dir}} 2>/dev/null
+    {{debug_bindgen}} generate --library {{debug_lib_path}} --config {{config}} --language {{lang}} --no-format --out-dir {{gen_dir}} 2>/dev/null
     cp {{debug_lib_path}} {{gen_dir}}/
     touch {{gen_dir}}/__init__.py
 
@@ -39,25 +40,38 @@ kotlin: (_generate "kotlin")
             https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar; \
     fi
     kotlinc -cp {{examples_dir}}/jna.jar -nowarn \
-        {{gen_dir}}/aaif/goose/aaif_goose.kt \
+        {{gen_dir}}/io/aaif/goose/goose.kt \
         {{examples_dir}}/Provider.kt \
         -include-runtime -d {{examples_dir}}/provider.jar 2>/dev/null
     java -Djna.library.path={{debug_lib_dir}} \
         --enable-native-access=ALL-UNNAMED \
         -cp {{examples_dir}}/provider.jar:{{examples_dir}}/jna.jar aaif.example.ProviderKt
 
-python-bindings: _build-release
-    rm -rf {{python_package_dir}}
-    mkdir -p {{python_package_dir}}
-    {{bindgen}} generate --library {{release_lib_path}} --config {{config}} --language python --no-format --out-dir {{python_package_dir}} 2>/dev/null
-    mv {{python_package_dir}}/goose.py {{python_package_dir}}/__init__.py
-    cp {{release_lib_path}} {{python_package_dir}}/
+python-bindings profile="debug":
+    @case "{{profile}}" in \
+        debug) cargo build -p goose-sdk --features uniffi -q; bindgen={{debug_bindgen}}; lib_path={{debug_lib_path}} ;; \
+        release) cargo build -p goose-sdk --features uniffi --release -q; bindgen={{release_bindgen}}; lib_path={{release_lib_path}} ;; \
+        *) echo 'profile must be debug or release' >&2; exit 1 ;; \
+    esac; \
+    rm -rf {{python_package_dir}}; \
+    mkdir -p {{python_package_dir}}; \
+    "$bindgen" generate --library "$lib_path" --config {{config}} --language python --no-format --out-dir {{python_package_dir}} 2>/dev/null; \
+    mv {{python_package_dir}}/goose.py {{python_package_dir}}/__init__.py; \
+    cp "$lib_path" {{python_package_dir}}/; \
     touch {{python_package_dir}}/py.typed
 
-python-wheel: python-bindings
+python-wheel: (python-bindings "release")
     rm -rf {{python_dir}}/build {{python_dir}}/dist {{python_dir}}/*.egg-info {{python_dir}}/src/*.egg-info
     cd {{python_dir}} && UV_NO_CONFIG=1 PIP_CONFIG_FILE=/dev/null PIP_INDEX_URL=https://pypi.org/simple uvx --default-index https://pypi.org/simple --from build pyproject-build --wheel
 
 python-check: python-wheel
     python3 -m pip install --force-reinstall {{python_dir}}/dist/*.whl
     python3 -c 'import goose; print(goose.__name__)'
+
+python-publish repository="pypi": python-wheel
+    UV_NO_CONFIG=1 PIP_CONFIG_FILE=/dev/null PIP_INDEX_URL=https://pypi.org/simple uvx --default-index https://pypi.org/simple twine check {{python_dir}}/dist/*.whl
+    @if [ "{{repository}}" = "pypi" ]; then \
+        UV_NO_CONFIG=1 PIP_CONFIG_FILE=/dev/null PIP_INDEX_URL=https://pypi.org/simple uvx --default-index https://pypi.org/simple twine upload {{python_dir}}/dist/*.whl; \
+    else \
+        UV_NO_CONFIG=1 PIP_CONFIG_FILE=/dev/null PIP_INDEX_URL=https://pypi.org/simple uvx --default-index https://pypi.org/simple twine upload --repository {{repository}} {{python_dir}}/dist/*.whl; \
+    fi
