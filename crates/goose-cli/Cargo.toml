@@ -15,6 +15,9 @@ workspace = true
 name = "goose"
 path = "src/main.rs"
 
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2.182", default-features = false, features = ["std"] }
+
 [[bin]]
 name = "generate_manpages"
 path = "src/bin/generate_manpages.rs"

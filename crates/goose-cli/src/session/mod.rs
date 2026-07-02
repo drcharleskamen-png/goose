@@ -5,6 +5,7 @@ mod elicitation;
 mod export;
 mod input;
 mod output;
+mod steer;
 pub mod streaming_buffer;
 mod task_execution_display;
 mod thinking;
@@ -505,6 +506,11 @@ impl CliSession {
     }
 
     async fn run_interactive(&mut self, prompt: Option<String>) -> Result<()> {
+        // Advertise mid-run steering in the thinking spinner when the steer
+        // reader will be active (interactive tty session).
+        output::set_steer_hint_enabled(
+            std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
+        );
         if let Some(prompt) = prompt {
             let msg = Message::user().with_text(&prompt);
             self.process_message(msg, CancellationToken::default(), true)
@@ -1151,6 +1157,27 @@ impl CliSession {
         interactive: bool,
         cancel_token: CancellationToken,
     ) -> Result<()> {
+        loop {
+            let leftover_steers = self
+                .process_agent_response_inner(interactive, cancel_token.clone())
+                .await?;
+            if leftover_steers.is_empty() || cancel_token.is_cancelled() {
+                return Ok(());
+            }
+            // Steering messages the user typed near the end of the run were
+            // never picked up by the agent loop; process them as a follow-up
+            // prompt so the input is not lost.
+            let text = leftover_steers.join("\n");
+            output::render_steer_followup(&text);
+            self.push_message(Message::user().with_text(&text));
+        }
+    }
+
+    async fn process_agent_response_inner(
+        &mut self,
+        interactive: bool,
+        cancel_token: CancellationToken,
+    ) -> Result<Vec<String>> {
         let is_json_mode = self.output_format == "json";
         let is_stream_json_mode = self.output_format == "stream-json";
 
@@ -1173,6 +1200,17 @@ impl CliSession {
         });
         let _drop_handle = AbortOnDropHandle::new(handle);
 
+        // Read steering messages typed while the agent is working. The reader
+        // is inert unless this is an interactive terminal session; it must be
+        // dropped before rustyline resumes reading stdin (it is dropped when
+        // this function returns).
+        let steer_enabled = interactive
+            && !is_json_mode
+            && !is_stream_json_mode
+            && std::io::stdin().is_terminal()
+            && std::io::stdout().is_terminal();
+        let (steer_control, mut steer_rx) = steer::spawn_steer_reader(steer_enabled);
+
         let mut stream = self
             .agent
             .reply(
@@ -1190,19 +1228,92 @@ impl CliSession {
         let run_started = Instant::now();
         let mut first_token_at: Option<Instant> = None;
         let mut last_usage: Option<ProviderUsage> = None;
+        // Steering messages queued with the agent but not yet picked up by
+        // the agent loop. Anything still here when the run ends was orphaned
+        // (typed too late) and gets re-processed as a follow-up prompt.
+        let mut queued_steers: Vec<String> = Vec::new();
+        // Live compose line: what the user has typed so far mid-run, and
+        // whether it is currently drawn on screen. The compose line is only
+        // ever cleared when we know we drew it last (nothing else printed
+        // since), so agent output is never erased.
+        let mut compose_text = String::new();
+        let mut compose_drawn = false;
 
         use futures::StreamExt;
         loop {
             tokio::select! {
+                Some(steer_event) = steer_rx.recv() => {
+                    match steer_event {
+                        steer::SteerEvent::Edit(text) => {
+                            if compose_text.is_empty() && !text.is_empty() {
+                                // User started typing: take over the bottom row.
+                                output::hide_thinking();
+                                let _ = progress_bars.hide();
+                            }
+                            compose_text = text;
+                            if compose_text.is_empty() {
+                                if compose_drawn {
+                                    output::clear_steer_compose();
+                                    compose_drawn = false;
+                                }
+                            } else {
+                                // If something else printed since our last draw,
+                                // start on a fresh row instead of clearing a line
+                                // we don't own.
+                                output::render_steer_compose(&compose_text, compose_drawn);
+                                compose_drawn = true;
+                            }
+                        }
+                        steer::SteerEvent::Submit(text) => {
+                            compose_text.clear();
+                            output::hide_thinking();
+                            let _ = progress_bars.hide();
+                            self.agent
+                                .steer(&self.session_id, Message::user().with_text(&text))
+                                .await;
+                            queued_steers.push(text.clone());
+                            output::render_steer_queued(&text, compose_drawn);
+                            compose_drawn = false;
+                        }
+                    }
+                }
                 result = stream.next() => {
+                    if compose_drawn {
+                        // Agent output is about to print: clear the compose row
+                        // (we own it) so output starts clean. It reappears on the
+                        // user's next keystroke.
+                        output::clear_steer_compose();
+                        compose_drawn = false;
+                    }
                     match result {
                         Some(Ok(AgentEvent::Message(message))) => {
+                            // A queued steer the agent has picked up and injected
+                            // into the conversation.
+                            if message.role == rmcp::model::Role::User && message.metadata.steer {
+                                let text = message.as_concat_text();
+                                if let Some(pos) = queued_steers.iter().position(|t| *t == text) {
+                                    queued_steers.remove(pos);
+                                }
+                                self.messages.push(message.clone());
+                                if interactive { output::hide_thinking() };
+                                let _ = progress_bars.hide();
+                                if is_stream_json_mode {
+                                    emit_stream_event(&StreamEvent::Message { message });
+                                } else if !is_json_mode {
+                                    output::flush_markdown_buffer_current_theme(&mut markdown_buffer);
+                                    output::render_steer_picked_up(&text);
+                                }
+                                continue;
+                            }
                             if first_token_at.is_none() && message_has_text(&message) {
                                 first_token_at = Some(Instant::now());
                             }
                             if let Some((id, security_prompt)) = find_tool_confirmation(&message) {
                                 let permission = if interactive {
-                                    prompt_tool_confirmation(&security_prompt)?
+                                    steer_control.pause().await;
+                                    let permission = prompt_tool_confirmation(&security_prompt)?;
+                                    steer_control.resume();
+                                    permission
                                 } else {
                                     // Non-interactive/headless mode: refuse to run in
                                     // Approve/SmartApprove modes since auto-allowing would
@@ -1264,7 +1375,10 @@ impl CliSession {
                                 output::hide_thinking();
                                 let _ = progress_bars.hide();
 
-                                match elicitation::collect_elicitation_input(&elicitation_message, &schema) {
+                                steer_control.pause().await;
+                                let elicitation_result = elicitation::collect_elicitation_input(&elicitation_message, &schema);
+                                steer_control.resume();
+                                match elicitation_result {
                                     Ok(input) => {
                                         match &input.action {
                                             ElicitationAction::Decline => {
@@ -1315,11 +1429,15 @@ impl CliSession {
                                     emit_stream_event(&StreamEvent::Message { message: message.clone() });
                                 } else if !is_json_mode {
                                     output::render_message_streaming(&message, &mut markdown_buffer, &mut thinking_header_shown, self.debug);
-                                    maybe_open_credits_top_up_url(
-                                        &message,
-                                        interactive,
-                                        &mut prompted_credits_urls,
-                                    );
+                                    if interactive && output::get_credits_top_up_url(&message).is_some() {
+                                        steer_control.pause().await;
+                                        maybe_open_credits_top_up_url(
+                                            &message,
+                                            interactive,
+                                            &mut prompted_credits_urls,
+                                        );
+                                        steer_control.resume();
+                                    }
                                 }
                             }
                         }
@@ -1436,7 +1554,24 @@ impl CliSession {
             }
         }
 
-        Ok(())
+        if !compose_text.is_empty() {
+            // A partially-typed steer the user never submitted: clear the
+            // line; rustyline takes over input next.
+            output::clear_steer_compose();
+        }
+        // Collect any steer lines that arrived after the stream ended but
+        // before we stopped listening.
+        while let Ok(event) = steer_rx.try_recv() {
+            if let steer::SteerEvent::Submit(text) = event {
+                queued_steers.push(text);
+            }
+        }
+        // Anything still queued with the agent was never picked up by this
+        // run; discard it so it cannot leak into an unrelated later prompt.
+        // The caller re-processes `queued_steers` as a follow-up instead.
+        self.agent.discard_pending_steers(&self.session_id).await;
+
+        Ok(queued_steers)
     }
 
     async fn handle_interrupted_messages(&mut self, interrupt: bool) -> Result<()> {

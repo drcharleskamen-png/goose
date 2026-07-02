@@ -116,6 +116,20 @@ pub fn get_show_full_tool_output() -> bool {
     SHOW_FULL_TOOL_OUTPUT.with(|s| *s.borrow())
 }
 
+// Whether the thinking spinner should advertise mid-run steering. Set by the
+// session loop when the steer reader is active. Process-wide because the
+// spinner may be shown from multiple call sites.
+static STEER_HINT_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_steer_hint_enabled(enabled: bool) {
+    STEER_HINT_ENABLED.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn steer_hint_enabled() -> bool {
+    STEER_HINT_ENABLED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 // Simple wrapper around spinner to manage its state
 #[derive(Default)]
 pub struct ThinkingIndicator {
@@ -125,7 +139,11 @@ pub struct ThinkingIndicator {
 impl ThinkingIndicator {
     pub fn show(&mut self) {
         let spinner = cliclack::spinner();
-        let hint = style("(Ctrl+C to interrupt)").dim();
+        let hint = if steer_hint_enabled() {
+            style("(Ctrl+C to interrupt · type + Enter to steer)").dim()
+        } else {
+            style("(Ctrl+C to interrupt)").dim()
+        };
         if Config::global()
             .get_param("RANDOM_THINKING_MESSAGES")
             .unwrap_or(true)
@@ -419,6 +437,78 @@ pub fn render_text_no_newlines(text: &str, color: Option<Color>, dim: bool) {
         styled_text = styled_text.green();
     }
     print!("{}", styled_text);
+}
+
+/// Draw the live steer compose line. Called on every keystroke while the
+/// user types mid-run. When `in_place` is true the compose line was the last
+/// thing drawn, so it is redrawn over itself; otherwise it starts on a fresh
+/// row so previously printed output is never overwritten.
+pub fn render_steer_compose(text: &str, in_place: bool) {
+    if !std::io::stdout().is_terminal() {
+        return;
+    }
+    // The thinking spinner redraws on its own; it must be off while the
+    // compose line owns the bottom row.
+    hide_thinking();
+    let mut out = std::io::stdout();
+    if in_place {
+        // \r + clear-line: safe because we drew this row.
+        let _ = write!(out, "\r\x1b[2K");
+    } else {
+        let _ = writeln!(out);
+    }
+    let _ = write!(
+        out,
+        "{} {}",
+        style("↳ steer:").yellow().bold(),
+        style(text).yellow()
+    );
+    let _ = out.flush();
+}
+
+/// Clear the live steer compose line. Only call when the compose line was
+/// the last thing drawn (the caller tracks this) so we never wipe agent
+/// output.
+pub fn clear_steer_compose() {
+    if !std::io::stdout().is_terminal() {
+        return;
+    }
+    let mut out = std::io::stdout();
+    let _ = write!(out, "\r\x1b[2K");
+    let _ = out.flush();
+}
+
+/// Render the confirmation that a steer message was queued. When `in_place`
+/// is true the live compose row was the last thing drawn and is replaced;
+/// otherwise the line starts on a fresh row.
+pub fn render_steer_queued(text: &str, in_place: bool) {
+    hide_thinking();
+    if in_place && std::io::stdout().is_terminal() {
+        print!("\r\x1b[2K");
+    } else {
+        println!();
+    }
+    println!(
+        "{} {}",
+        style("↳ steer queued:").yellow().bold(),
+        style(safe_truncate(text, 200)).yellow()
+    );
+}
+
+pub fn render_steer_picked_up(_text: &str) {
+    // The message text was already shown when it was queued; repeating it
+    // here made steers appear duplicated. Just mark the boundary.
+    println!("\n{}\n", style("↳ steering").yellow().dim());
+}
+
+pub fn render_steer_followup(_text: &str) {
+    // Same: the text was shown live while composing and again when queued.
+    println!(
+        "\n{}\n",
+        style("↳ run ended before steer applied — sending as follow-up")
+            .yellow()
+            .dim()
+    );
 }
 
 pub fn render_enter_plan_mode() {
