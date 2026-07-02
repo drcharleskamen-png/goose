@@ -1,9 +1,9 @@
+use crate::conversation::token_usage::{ProviderUsage, Usage};
+use crate::errors::ProviderError;
+use crate::formats::openai::{is_valid_function_name, sanitize_function_name};
+use crate::model::ModelConfig;
+use crate::thinking::ThinkingEffort;
 use anyhow::Result;
-use goose_providers::conversation::token_usage::{ProviderUsage, Usage};
-use goose_providers::errors::ProviderError;
-use goose_providers::formats::openai::{is_valid_function_name, sanitize_function_name};
-use goose_providers::model::ModelConfig;
-use goose_providers::thinking::ThinkingEffort;
 use rmcp::model::{
     object, AnnotateAble, CallToolRequestParams, ErrorCode, ErrorData, RawContent, Role, Tool,
 };
@@ -586,9 +586,9 @@ fn get_thinking_config(model_config: &ModelConfig) -> Option<ThinkingConfig> {
         let thinking_budget = match model_config
             .request_param::<i32>("thinking_budget")
             .or_else(|| {
-                crate::config::Config::global()
-                    .get_param("GEMINI25_THINKING_BUDGET")
+                std::env::var("GEMINI25_THINKING_BUDGET")
                     .ok()
+                    .and_then(|value| value.parse().ok())
             }) {
             Some(budget) if budget >= 0 => budget,
             Some(budget) => {
@@ -1417,7 +1417,7 @@ data: [DONE]"#;
 
     #[test]
     fn test_get_thinking_config_disabled_reasoning() {
-        use goose_providers::model::ModelConfig;
+        use crate::model::ModelConfig;
 
         let config = ModelConfig::new("gemini-2.5-flash").with_thinking_effort(ThinkingEffort::Off);
         let thinking_config = get_thinking_config(&config).unwrap();
@@ -1430,7 +1430,7 @@ data: [DONE]"#;
 
     #[test]
     fn test_get_thinking_config() {
-        use goose_providers::model::ModelConfig;
+        use crate::model::ModelConfig;
 
         // Test 1: Gemini 3 model with low thinking effort
         let mut params = std::collections::HashMap::new();
