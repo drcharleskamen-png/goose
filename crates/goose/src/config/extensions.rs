@@ -199,6 +199,27 @@ pub fn is_extension_enabled(key: &str) -> bool {
     extensions.get(key).map(|e| e.enabled).unwrap_or(false)
 }
 
+/// Returns the configured enabled state for an extension, or `None` when the
+/// extension has no entry in the config at all.
+///
+/// This lets callers distinguish "not configured" (e.g. a fresh install where a
+/// bundled builtin should still load by default) from "explicitly turned off".
+pub fn configured_enabled_state(config: &Config, name: &str) -> Option<bool> {
+    let extensions = get_extensions_map_with_config(config);
+    let key = name_to_key(name);
+    extensions
+        .values()
+        .find(|entry| entry.config.name() == name)
+        .or_else(|| extensions.get(&key))
+        .map(|entry| entry.enabled)
+}
+
+/// Returns true only when an extension has an explicit config entry that is
+/// disabled. Missing entries return false so default-on builtins keep loading.
+pub fn is_extension_explicitly_disabled(config: &Config, name: &str) -> bool {
+    matches!(configured_enabled_state(config, name), Some(false))
+}
+
 pub fn get_enabled_extensions() -> Vec<ExtensionConfig> {
     get_all_extensions()
         .into_iter()
@@ -663,5 +684,40 @@ extensions:
             "expected no logs for other extension keys, got {:?}",
             other_keys
         );
+    }
+
+    #[test]
+    fn test_configured_enabled_state_unknown_extension_is_none() {
+        let (config, _config_file, _secrets_file) = test_config("");
+
+        assert_eq!(
+            configured_enabled_state(&config, "not_a_real_extension"),
+            None
+        );
+        assert!(!is_extension_explicitly_disabled(
+            &config,
+            "not_a_real_extension"
+        ));
+    }
+
+    #[test]
+    fn test_default_enabled_platform_extension_is_not_explicitly_disabled() {
+        let (config, _config_file, _secrets_file) = test_config("");
+
+        assert_eq!(configured_enabled_state(&config, "developer"), Some(true));
+        assert!(!is_extension_explicitly_disabled(&config, "developer"));
+    }
+
+    #[test]
+    fn test_configured_enabled_state_reflects_saved_entry() {
+        let (config, _config_file, _secrets_file) = test_config("");
+        set_extension_with_config(&config, builtin_entry("developer", false));
+
+        assert_eq!(configured_enabled_state(&config, "developer"), Some(false));
+        assert!(is_extension_explicitly_disabled(&config, "developer"));
+
+        set_extension_enabled_with_config(&config, "developer", true);
+        assert_eq!(configured_enabled_state(&config, "developer"), Some(true));
+        assert!(!is_extension_explicitly_disabled(&config, "developer"));
     }
 }

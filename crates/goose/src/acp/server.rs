@@ -16,7 +16,9 @@ use crate::agents::{
     Agent, AgentConfig, ExtensionConfig, ExtensionLoadResult, GoosePlatform, SessionConfig,
 };
 use crate::config::base::CONFIG_YAML_NAME;
-use crate::config::extensions::get_enabled_extensions_with_config;
+use crate::config::extensions::{
+    get_enabled_extensions_with_config, is_extension_explicitly_disabled,
+};
 use crate::config::paths::Paths;
 use crate::config::permission::PermissionManager;
 use crate::config::{Config, GooseMode};
@@ -1028,7 +1030,11 @@ impl GooseAcpAgent {
     ) -> Result<Vec<ExtensionConfig>, agent_client_protocol::Error> {
         let mut extensions = Vec::new();
         for builtin in &self.builtins {
-            push_or_replace_extension(&mut extensions, builtin_to_extension_config(builtin));
+            let builtin_config = builtin_to_extension_config(builtin);
+            if is_extension_explicitly_disabled(config, &builtin_config.name()) {
+                continue;
+            }
+            push_or_replace_extension(&mut extensions, builtin_config);
         }
 
         if let Some(recipe_extensions) = recipe_extensions {
