@@ -26,8 +26,8 @@ goose's architecture is designed for extensibility. Organizations can create "re
           │                │                      │
           ▼                ▼                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    goose-server (goosed)                        │
-│         REST API for all goose functionality                    │
+│                    goose serve (ACP)                            │
+│         ACP HTTP/WebSocket server for custom clients            │
 └─────────────────────────────────────────────────────────────────┘
           │
           ▼
@@ -49,7 +49,7 @@ goose's architecture is designed for extensibility. Organizations can create "re
 | Bundle custom MCP extensions | `config.yaml` extensions section, `ui/desktop/src/built-in-extensions.json`, `ui/desktop/src/components/settings/extensions/bundled-extensions.json` | Medium |
 | Modify system prompts | `crates/goose/src/prompts/` | Low |
 | Customize desktop branding | `ui/desktop/` (icons, names, colors) | Medium |
-| Build a new UI (web, mobile) | Integrate with `goose-server` REST API | High |
+| Build a new UI (web, mobile) | Integrate with `goose serve` over ACP | High |
 | Create guided workflows | Recipes (YAML-based task definitions) | Low |
 | Build complex multi-step workflows | Recipes with sub-recipes and subagents | Medium |
 
@@ -306,38 +306,22 @@ export GOOSE_BUNDLE_NAME="InsightStream-goose"
 
 goose provides two integration options for building custom UIs:
 
-### Option 1: REST API (goose-server)
+### Option 1: ACP HTTP/WebSocket (`goose serve`)
 
-Use goose-server for HTTP-based integrations (web apps, simple clients):
+Use `goose serve` for ACP-based integrations (web apps, desktop shells, and other clients):
 
 ```bash
 # Start the server
-./target/release/goosed
+GOOSE_SERVER__SECRET_KEY='a-long-random-secret' goose serve
 
-# API available at http://localhost:3000
+# ACP endpoint available at http://localhost:3284/acp
 ```
 
-**Reference the OpenAPI spec** at `ui/desktop/openapi.json` for available endpoints:
-- Session management
-- Message streaming  
-- Extension control
-- Configuration
+For the ACP protocol and client flow, see [Agent Client Protocol clients](documentation/docs/guides/acp-clients.md).
 
-**Key endpoints** for a minimal integration:
+### Option 2: Agent Client Protocol (ACP) over stdio
 
-```
-POST /sessions              # Create a new session
-POST /sessions/{id}/messages # Send a message (streaming response)
-GET  /sessions/{id}         # Get session state
-GET  /extensions            # List available extensions
-POST /extensions/{name}/enable  # Enable an extension
-```
-
-**Handle streaming responses** - goose uses Server-Sent Events (SSE) for real-time responses.
-
-### Option 2: Agent Client Protocol (ACP)
-
-For richer integrations (IDEs, desktop apps, embedded agents), use the **Agent Client Protocol (ACP)**—a standardized JSON-RPC protocol for AI agent communication over stdio or other transports.
+For richer local integrations (IDEs and embedded agents), run goose as an ACP agent over stdio.
 
 ACP provides:
 - **Bidirectional communication**: Agents can request permissions, stream updates, and receive cancellations
@@ -409,11 +393,6 @@ client.send_request("session/prompt", {
 For the full ACP specification, see the [Agent Client Protocol documentation](https://github.com/anthropics/anthropic-cookbook/tree/main/misc/agent_client_protocol).
 
 ### Technical Details
-
-**REST API (goose-server)**:
-- Server implementation: `crates/goose-server/src/routes/`
-- OpenAPI generation: `just generate-openapi`
-- API client example: `ui/desktop/src/api/` (generated TypeScript client)
 
 **ACP**:
 - ACP server implementation: `crates/goose/src/acp/server.rs`

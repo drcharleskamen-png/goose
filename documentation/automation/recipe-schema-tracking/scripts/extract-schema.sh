@@ -1,5 +1,6 @@
 #!/bin/bash
-# Extract and resolve Recipe schema from OpenAPI spec at a specific git version
+# Extract and resolve Recipe schema from ACP schema at a specific git version.
+# Older versions fall back to the legacy OpenAPI spec.
 # Usage: ./extract-schema.sh <version>
 # Example: ./extract-schema.sh v1.15.0
 
@@ -23,29 +24,32 @@ if [ "$VERSION" != "main" ]; then
     fi
 fi
 
-# Extract OpenAPI spec from git
+# Extract ACP schema from git, falling back to the legacy OpenAPI spec for old tags.
 if [ "$VERSION" = "main" ]; then
-    if [ ! -f ui/desktop/openapi.json ]; then
-        echo "Error: ui/desktop/openapi.json not found in working directory" >&2
+    if [ -f crates/goose/acp-schema.json ]; then
+        SCHEMA_JSON=$(cat crates/goose/acp-schema.json)
+    elif [ -f ui/desktop/openapi.json ]; then
+        SCHEMA_JSON=$(cat ui/desktop/openapi.json)
+    else
+        echo "Error: neither crates/goose/acp-schema.json nor ui/desktop/openapi.json found in working directory" >&2
         exit 1
     fi
-    OPENAPI_JSON=$(cat ui/desktop/openapi.json)
 else
-    OPENAPI_JSON=$(git show "$VERSION:ui/desktop/openapi.json" 2>/dev/null || {
-        echo "Error: Could not find ui/desktop/openapi.json at version $VERSION" >&2
+    SCHEMA_JSON=$(git show "$VERSION:crates/goose/acp-schema.json" 2>/dev/null || git show "$VERSION:ui/desktop/openapi.json" 2>/dev/null || {
+        echo "Error: Could not find crates/goose/acp-schema.json or ui/desktop/openapi.json at version $VERSION" >&2
         exit 1
     })
 fi
 
 # Use Node.js to extract and resolve Recipe schema
-echo "$OPENAPI_JSON" | node -e "
-const openApiSpec = JSON.parse(require('fs').readFileSync(0, 'utf-8'));
+echo "$SCHEMA_JSON" | node -e "
+const schemaDoc = JSON.parse(require('fs').readFileSync(0, 'utf-8'));
 
 /**
- * Resolves \$ref references in OpenAPI schemas by expanding them with the actual schema definitions
+ * Resolves \$ref references by expanding them with the actual schema definitions
  * Ported from ui/desktop/src/recipe/validation.ts
  */
-function resolveRefs(schema, openApiSpec) {
+function resolveRefs(schema, schemaDoc) {
   if (!schema || typeof schema !== 'object') {
     return schema;
   }
@@ -53,7 +57,7 @@ function resolveRefs(schema, openApiSpec) {
   // Handle \$ref
   if (typeof schema.\$ref === 'string') {
     const refPath = schema.\$ref.replace('#/', '').split('/');
-    let resolved = openApiSpec;
+    let resolved = schemaDoc;
 
     for (const segment of refPath) {
       if (resolved && typeof resolved === 'object' && segment in resolved) {
@@ -66,7 +70,7 @@ function resolveRefs(schema, openApiSpec) {
 
     if (resolved && typeof resolved === 'object') {
       // Recursively resolve refs in the resolved schema
-      return resolveRefs(resolved, openApiSpec);
+      return resolveRefs(resolved, schemaDoc);
     }
 
     return schema;
@@ -77,7 +81,7 @@ function resolveRefs(schema, openApiSpec) {
     const merged = {};
     for (const subSchema of schema.allOf) {
       if (typeof subSchema === 'object' && subSchema !== null) {
-        const resolved = resolveRefs(subSchema, openApiSpec);
+        const resolved = resolveRefs(subSchema, schemaDoc);
         Object.assign(merged, resolved);
       }
     }
@@ -92,7 +96,7 @@ function resolveRefs(schema, openApiSpec) {
       ...schema,
       oneOf: schema.oneOf.map((subSchema) =>
         typeof subSchema === 'object' && subSchema !== null
-          ? resolveRefs(subSchema, openApiSpec)
+          ? resolveRefs(subSchema, schemaDoc)
           : subSchema
       ),
     };
@@ -103,7 +107,7 @@ function resolveRefs(schema, openApiSpec) {
       ...schema,
       anyOf: schema.anyOf.map((subSchema) =>
         typeof subSchema === 'object' && subSchema !== null
-          ? resolveRefs(subSchema, openApiSpec)
+          ? resolveRefs(subSchema, schemaDoc)
           : subSchema
       ),
     };
@@ -114,7 +118,7 @@ function resolveRefs(schema, openApiSpec) {
     const resolvedProperties = {};
     for (const [key, value] of Object.entries(schema.properties)) {
       if (typeof value === 'object' && value !== null) {
-        resolvedProperties[key] = resolveRefs(value, openApiSpec);
+        resolvedProperties[key] = resolveRefs(value, schemaDoc);
       } else {
         resolvedProperties[key] = value;
       }
@@ -129,7 +133,7 @@ function resolveRefs(schema, openApiSpec) {
   if (schema.type === 'array' && schema.items && typeof schema.items === 'object') {
     return {
       ...schema,
-      items: resolveRefs(schema.items, openApiSpec),
+      items: resolveRefs(schema.items, schemaDoc),
     };
   }
 
@@ -137,16 +141,16 @@ function resolveRefs(schema, openApiSpec) {
   return schema;
 }
 
-// Extract Recipe schema
-const recipeSchema = openApiSpec.components?.schemas?.Recipe;
+// Extract Recipe schema from current ACP schema, or legacy OpenAPI schema.
+const recipeSchema = schemaDoc.\$defs?.RecipeDto || schemaDoc.components?.schemas?.Recipe;
 
 if (!recipeSchema) {
-  console.error('Error: Recipe schema not found in OpenAPI specification');
+  console.error('Error: Recipe schema not found');
   process.exit(1);
 }
 
 // Resolve all \$refs in the schema
-const resolvedSchema = resolveRefs(recipeSchema, openApiSpec);
+const resolvedSchema = resolveRefs(recipeSchema, schemaDoc);
 
 // Convert OpenAPI schema to JSON Schema format
 const jsonSchema = {

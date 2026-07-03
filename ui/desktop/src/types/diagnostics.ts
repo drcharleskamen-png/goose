@@ -33,7 +33,6 @@ export type DiagnosticsTextFile = {
 
 export type DiagnosticsLogs = {
   llm: DiagnosticsTextFile[];
-  server?: DiagnosticsTextFile | null;
 };
 
 export type DiagnosticsPrompt = {

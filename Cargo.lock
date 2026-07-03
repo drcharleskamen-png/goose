@@ -5230,45 +5230,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "goose-server"
-version = "1.41.0"
-dependencies = [
- "anyhow",
- "axum",
- "axum-server",
- "base64 0.22.1",
- "bytes",
- "chrono",
- "clap",
- "config",
- "futures",
- "goose",
- "goose-mcp",
- "goose-providers",
- "hex",
- "http 1.4.2",
- "rand 0.10.1",
- "reqwest 0.13.4",
- "rmcp",
- "rustls",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "serde_yaml",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tower",
- "tower-http 0.7.0",
- "tracing",
- "tracing-subscriber",
- "utoipa 4.2.3",
- "uuid",
- "winreg",
-]
-
-[[package]]
 name = "goose-test"
 version = "1.41.0"
 dependencies = [

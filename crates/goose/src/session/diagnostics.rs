@@ -9,7 +9,6 @@ use std::fs;
 use std::path::PathBuf;
 use utoipa::ToSchema;
 
-const SERVER_LOG_TAIL_LINES: usize = 400;
 const LLM_LOG_MAX_BYTES: usize = 2 * 1024 * 1024;
 const CONFIG_MAX_BYTES: usize = 256 * 1024;
 
@@ -57,7 +56,6 @@ pub struct DiagnosticsTextFile {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticsLogs {
-    pub server: Option<DiagnosticsTextFile>,
     pub llm: Vec<DiagnosticsTextFile>,
 }
 
@@ -148,12 +146,6 @@ pub fn get_system_info() -> SystemInfo {
 
 pub fn config_path() -> PathBuf {
     Paths::config_dir().join("config.yaml")
-}
-
-pub fn latest_server_log_path() -> Option<PathBuf> {
-    let server_dir = Paths::in_state_dir("logs").join("server");
-    let latest_date_dir = latest_entry_by_name(&server_dir)?;
-    latest_entry_by_name(&latest_date_dir)
 }
 
 pub fn latest_llm_log_path() -> Option<PathBuf> {
@@ -311,13 +303,6 @@ pub async fn generate_diagnostics(
 
     let logs = if is_full {
         DiagnosticsLogs {
-            server: latest_server_log_path().and_then(|path| {
-                read_tail(&path, SERVER_LOG_TAIL_LINES).map(|content| DiagnosticsTextFile {
-                    path: path.display().to_string(),
-                    content,
-                    truncated: true,
-                })
-            }),
             llm: recent_llm_log_paths()
                 .into_iter()
                 .filter_map(|path| {
