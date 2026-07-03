@@ -92,4 +92,14 @@ Use the existing Windows build process as documented.
 
 # Running with an external ACP backend
 
-Run `GOOSE_SERVER__SECRET_KEY=test cargo run -p goose-cli --bin goose -- serve --platform desktop` from the project root, then start the desktop app with `GOOSE_EXTERNAL_BACKEND=true`.
+From the project root, start the ACP backend:
+
+```bash
+GOOSE_SERVER__SECRET_KEY=test cargo run -p goose-cli --bin goose -- serve --platform desktop --host 127.0.0.1 --port 3000
+```
+
+Then start the desktop app from `ui/desktop`:
+
+```bash
+GOOSE_EXTERNAL_BACKEND=true GOOSE_EXTERNAL_BACKEND_URL=http://127.0.0.1:3000 GOOSE_SERVER__SECRET_KEY=test pnpm run start-gui
+```

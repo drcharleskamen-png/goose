@@ -507,23 +507,24 @@ These variables configure the [Langfuse integration for observability](/docs/tut
 
 ## goose ACP Server
 
-These variables configure the `goose serve` ACP server process. They are most often used when [running a remote goose server](/docs/guides/remote-goose-server) and connecting goose Desktop to it.
+These variables configure the `goose serve` ACP server process. They are alternatives to the equivalent `goose serve` flags, and are most often used when [running a remote goose server](/docs/guides/remote-goose-server) and connecting goose Desktop to it.
 
 | Variable | Purpose | Values | Default |
 |----------|---------|---------|---------|
-| `GOOSE_TLS` | Enable TLS with a self-signed certificate. Required when connecting goose Desktop to a remote server. | `true`, `false` | `false` |
-| `GOOSE_SERVER__SECRET_KEY` | Shared secret required by the ACP endpoint. `goose serve` requires this variable unless started with `--dangerously-unauthenticated`. | Secret string | Required for `goose serve` |
+| `GOOSE_TLS` | Equivalent to `goose serve --tls`. Recommended for remote servers. | `true`, `false` | `false` |
+| `GOOSE_TLS_CERT_PATH` | Equivalent to `goose serve --tls-cert-path`. Must be used with `GOOSE_TLS_KEY_PATH`; setting it enables TLS. | File path | None |
+| `GOOSE_TLS_KEY_PATH` | Equivalent to `goose serve --tls-key-path`. Must be used with `GOOSE_TLS_CERT_PATH`; setting it enables TLS. | File path | None |
+| `GOOSE_SERVER__SECRET_KEY` | Shared secret required by the ACP endpoint unless `--dangerously-unauthenticated` is used. | Secret string | Required |
 
 **Examples**
 
 ```bash
 # Start a goose ACP server reachable on the local network over TLS
-export GOOSE_TLS=true
-export GOOSE_SERVER__SECRET_KEY='a-long-random-secret'
-goose serve --host 0.0.0.0 --port 3000 --platform desktop
+GOOSE_SERVER__SECRET_KEY='a-long-random-secret' \
+goose serve --platform desktop --host 0.0.0.0 --port 3000 --tls
 ```
 
-When TLS is enabled, `goose serve` prints a `GOOSED_CERT_FINGERPRINT=...` line on startup. Clients (such as goose Desktop) need this fingerprint to verify the self-signed certificate. See [Running a Remote goose Server](/docs/guides/remote-goose-server) for the full setup.
+When TLS is enabled, `goose serve` prints a `GOOSED_CERT_FINGERPRINT=...` line on startup. goose Desktop can use this fingerprint to pin the server certificate. See [Running a Remote goose Server](/docs/guides/remote-goose-server) for the full setup.
 
 ## Recipe Configuration
 

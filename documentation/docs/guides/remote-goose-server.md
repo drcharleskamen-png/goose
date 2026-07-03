@@ -19,8 +19,8 @@ This guide covers:
 5. [Running `goose serve` as a background service on macOS](#running-goose-serve-as-a-background-service-macos)
 6. [Troubleshooting](#troubleshooting)
 
-:::warning TLS is required
-goose Desktop will refuse to connect to a remote server over plain HTTP. Start `goose serve` with `--tls` or `GOOSE_TLS=true`.
+:::warning Use TLS for remote servers
+goose Desktop accepts both HTTP and HTTPS external backend URLs, but TLS is strongly recommended when connecting over a network. Certificate fingerprint pinning requires HTTPS.
 :::
 
 ## Initial Setup
@@ -40,7 +40,7 @@ If you are using the binary bundled with the macOS app, the command path is `/Ap
 |---------|---------|
 | `--host` | Interface to bind to. Use `0.0.0.0` to accept connections from other machines. Binding to `localhost` or `127.0.0.1` will only accept local connections. |
 | `--port` | TCP port to listen on. |
-| `--tls` / `GOOSE_TLS=true` | Must be enabled. goose Desktop will not connect to a plain HTTP remote server. |
+| `--tls` / `GOOSE_TLS=true` | Enables TLS. Strongly recommended for remote servers and required for certificate fingerprint pinning. |
 | `GOOSE_SERVER__SECRET_KEY` | Shared secret. The client must send this to the ACP endpoint. Treat it like a password. |
 
 :::tip
@@ -70,9 +70,9 @@ A successful `/status` response confirms that TLS is up. The `/acp` check should
 
 If you intend to reach the server from another machine, also test from there using the server's hostname or VPN address — not `127.0.0.1`.
 
-### 3. Find the certificate fingerprint
+### 3. Optionally find the certificate fingerprint
 
-Because `goose serve` generates a self-signed TLS certificate, goose Desktop pins it by SHA-256 fingerprint rather than relying on a public certificate authority.
+When `goose serve` runs with TLS, it generates or loads a TLS certificate. goose Desktop can pin that certificate by SHA-256 fingerprint. If you leave the fingerprint field empty, goose Desktop uses trust-on-first-use and pins the first certificate it sees for that backend.
 
 When TLS is enabled, `goose serve` logs the fingerprint on startup. It looks like:
 
@@ -89,7 +89,7 @@ To capture it, either:
 grep GOOSED_CERT_FINGERPRINT ~/Library/Logs/GooseExternal/goose-serve.out.log
 ```
 
-Make a note of the fingerprint — you will paste it into goose Desktop in the next step.
+Make a note of the fingerprint if you want to pin a specific certificate in goose Desktop.
 
 :::note
 The fingerprint changes whenever `goose serve` regenerates its certificate (for example, if you delete the cert file). If goose Desktop suddenly refuses to connect after a server restart, re-check the fingerprint.
@@ -104,7 +104,7 @@ On the client machine, open goose Desktop and navigate to **Settings → goose S
 | **Use external server** | Enabled |
 | **URL** | `https://your-server-host:3000` (use the hostname or IP that the client can reach — for example a VPN/tailnet address) |
 | **Secret Key** | The same value you used for `GOOSE_SERVER__SECRET_KEY` |
-| **Certificate Fingerprint** | The `GOOSED_CERT_FINGERPRINT` value from the server logs |
+| **Certificate Fingerprint** | Optional. Use the `GOOSED_CERT_FINGERPRINT` value from the server logs to pin a specific TLS certificate. |
 
 After saving, goose Desktop will route all backend requests to the remote `goose serve` process. If the connection fails, see [Troubleshooting](#troubleshooting).
 
@@ -192,16 +192,16 @@ The output should show the address as `*:3000` or the specific external IP, not 
 
 In the server's startup logs:
 
-- If you see `listening on http://...`, TLS is **not** enabled. goose Desktop will not connect. Start with `--tls` or `GOOSE_TLS=true` and restart `goose serve`.
+- If you see `listening on http://...`, TLS is **not** enabled. goose Desktop can still connect over HTTP, but this is not recommended for remote servers. Start with `--tls` or `GOOSE_TLS=true` and restart `goose serve`.
 - If you see `listening on https://...`, TLS is enabled and you are good to go.
 
-The startup logs also contain the `GOOSED_CERT_FINGERPRINT=...` line you need for the goose Desktop configuration. Search the server's stdout (or log file, if running under `launchd`) for `GOOSED_CERT_FINGERPRINT` to find it.
+The startup logs also contain the `GOOSED_CERT_FINGERPRINT=...` line you can use for certificate pinning in goose Desktop. Search the server's stdout (or log file, if running under `launchd`) for `GOOSED_CERT_FINGERPRINT` to find it.
 
 ### Client cannot authenticate (401 / Unauthorized)
 
 A `401` from the server, or a goose Desktop error indicating that the secret was rejected, almost always means that `GOOSE_SERVER__SECRET_KEY` on the server does not match the **Secret Key** in goose Desktop's settings.
 
-To check the secret end-to-end without involving goose Desktop, run the authenticated `curl` from [step 2](#2-verify-the-server-is-up) using exactly the value you have configured on the client. If that returns `200`, the secret is correct and the problem is in the client configuration; if it returns `401`, the secret on the server is different from what you are sending.
+To check the secret end-to-end without involving goose Desktop, run the authenticated `curl` from [step 2](#2-verify-the-server-is-up) using exactly the value you have configured on the client. For this `GET /acp` probe, a `406` response means authentication passed but the request did not include the SSE headers needed by the ACP stream. A `401` or `403` means the secret on the server is different from what you are sending.
 
 If you rotate the secret on the server, you must also update it in goose Desktop's settings — they are not synchronized automatically.
 
