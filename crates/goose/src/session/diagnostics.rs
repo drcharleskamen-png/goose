@@ -261,12 +261,6 @@ fn was_truncated(content: &str) -> bool {
     content.contains("... (") && content.contains(" bytes omitted) ...")
 }
 
-fn latest_entry_by_name(dir: &std::path::Path) -> Option<PathBuf> {
-    let mut entries: Vec<_> = fs::read_dir(dir).ok()?.filter_map(|e| e.ok()).collect();
-    entries.sort_by_key(|e| e.file_name());
-    entries.last().map(|e| e.path())
-}
-
 pub async fn generate_diagnostics(
     session_manager: &SessionManager,
     session_id: &str,
