@@ -11,6 +11,8 @@ use utoipa::ToSchema;
 
 const LLM_LOG_MAX_BYTES: usize = 2 * 1024 * 1024;
 const CONFIG_MAX_BYTES: usize = 256 * 1024;
+const CLI_LOG_TAIL_LINES: usize = 400;
+const CLI_LOGS_TO_INCLUDE: usize = 3;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -56,6 +58,7 @@ pub struct DiagnosticsTextFile {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticsLogs {
+    pub cli: Vec<DiagnosticsTextFile>,
     pub llm: Vec<DiagnosticsTextFile>,
 }
 
@@ -153,6 +156,37 @@ pub fn latest_llm_log_path() -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
+pub fn recent_cli_log_paths() -> Vec<PathBuf> {
+    let component_dir = Paths::in_state_dir("logs").join("cli");
+    let mut paths = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(component_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Ok(files) = fs::read_dir(path) {
+                    paths.extend(
+                        files
+                            .flatten()
+                            .map(|entry| entry.path())
+                            .filter(|path| path.is_file()),
+                    );
+                }
+            } else if path.is_file() {
+                paths.push(path);
+            }
+        }
+    }
+
+    paths.sort_by(|left, right| {
+        log_modified(right)
+            .cmp(&log_modified(left))
+            .then_with(|| log_name(left).cmp(&log_name(right)))
+    });
+    paths.truncate(CLI_LOGS_TO_INCLUDE);
+    paths
+}
+
 fn recent_llm_log_paths() -> Vec<PathBuf> {
     let logs_dir = Paths::in_state_dir("logs");
     let paths: Vec<_> = fs::read_dir(logs_dir)
@@ -173,9 +207,9 @@ fn recent_llm_log_paths() -> Vec<PathBuf> {
 
     numbered.sort_by_key(|path| llm_log_index(path).unwrap_or(usize::MAX));
     temp.sort_by(|left, right| {
-        llm_log_modified(right)
-            .cmp(&llm_log_modified(left))
-            .then_with(|| llm_log_name(left).cmp(&llm_log_name(right)))
+        log_modified(right)
+            .cmp(&log_modified(left))
+            .then_with(|| log_name(left).cmp(&log_name(right)))
     });
 
     if temp.is_empty() || numbered.len() < LOGS_TO_KEEP {
@@ -202,13 +236,13 @@ fn llm_log_index(path: &std::path::Path) -> Option<usize> {
         .and_then(|name| name.parse::<usize>().ok())
 }
 
-fn llm_log_modified(path: &std::path::Path) -> std::time::SystemTime {
+fn log_modified(path: &std::path::Path) -> std::time::SystemTime {
     path.metadata()
         .and_then(|metadata| metadata.modified())
         .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
 }
 
-fn llm_log_name(path: &std::path::Path) -> String {
+fn log_name(path: &std::path::Path) -> String {
     path.file_name()
         .and_then(|name| name.to_str())
         .unwrap_or_default()
@@ -297,6 +331,16 @@ pub async fn generate_diagnostics(
 
     let logs = if is_full {
         DiagnosticsLogs {
+            cli: recent_cli_log_paths()
+                .into_iter()
+                .filter_map(|path| {
+                    read_tail(&path, CLI_LOG_TAIL_LINES).map(|content| DiagnosticsTextFile {
+                        path: path.display().to_string(),
+                        content,
+                        truncated: true,
+                    })
+                })
+                .collect(),
             llm: recent_llm_log_paths()
                 .into_iter()
                 .filter_map(|path| {

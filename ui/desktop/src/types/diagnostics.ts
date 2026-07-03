@@ -32,6 +32,7 @@ export type DiagnosticsTextFile = {
 };
 
 export type DiagnosticsLogs = {
+  cli: DiagnosticsTextFile[];
   llm: DiagnosticsTextFile[];
 };
 

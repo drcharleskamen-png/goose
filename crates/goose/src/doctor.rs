@@ -6,7 +6,9 @@ use crate::config::Config;
 use crate::conversation::message::Message;
 use crate::providers;
 use crate::providers::base::Provider;
-use crate::session::{config_path, latest_llm_log_path, read_capped, SystemInfo};
+use crate::session::{
+    config_path, latest_llm_log_path, read_capped, read_tail, recent_cli_log_paths, SystemInfo,
+};
 use goose_providers::errors::ProviderError;
 
 pub async fn run(agent: &crate::agents::Agent, session_id: &str) -> anyhow::Result<Message> {
@@ -32,6 +34,12 @@ pub async fn run(agent: &crate::agents::Agent, session_id: &str) -> anyhow::Resu
         },
         config_path().display(),
     );
+
+    if let Some(path) = recent_cli_log_paths().into_iter().next() {
+        if let Some(tail) = read_tail(&path, 50) {
+            prompt.push_str(&format!("\nRecent CLI log:\n```\n{}\n```\n", tail));
+        }
+    }
 
     if let Some(path) = latest_llm_log_path() {
         if let Some(content) = read_capped(&path, 10_000) {
