@@ -417,6 +417,18 @@ fn mcp_server_to_extension_config(mcp_server: McpServer) -> Result<ExtensionConf
     }
 }
 
+fn selected_builtin_extensions(config: &Config, builtins: &[String]) -> Vec<ExtensionConfig> {
+    let mut extensions = Vec::new();
+    for builtin in builtins {
+        let builtin_config = builtin_to_extension_config(builtin);
+        if is_extension_explicitly_disabled(config, &builtin_config.name()) {
+            continue;
+        }
+        push_or_replace_extension(&mut extensions, builtin_config);
+    }
+    extensions
+}
+
 fn push_or_replace_extension(extensions: &mut Vec<ExtensionConfig>, extension: ExtensionConfig) {
     let name = extension.name().to_string();
     if let Some(index) = extensions
@@ -1028,14 +1040,7 @@ impl GooseAcpAgent {
         goose_extensions: Option<Vec<GooseExtension>>,
         recipe_extensions: Option<&[ExtensionConfig]>,
     ) -> Result<Vec<ExtensionConfig>, agent_client_protocol::Error> {
-        let mut extensions = Vec::new();
-        for builtin in &self.builtins {
-            let builtin_config = builtin_to_extension_config(builtin);
-            if is_extension_explicitly_disabled(config, &builtin_config.name()) {
-                continue;
-            }
-            push_or_replace_extension(&mut extensions, builtin_config);
-        }
+        let mut extensions = selected_builtin_extensions(config, &self.builtins);
 
         if let Some(recipe_extensions) = recipe_extensions {
             for extension in recipe_extensions {
@@ -3092,6 +3097,62 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
     use test_case::test_case;
+
+    fn config_with_yaml(yaml: &str) -> (Config, NamedTempFile, NamedTempFile) {
+        let config_file = NamedTempFile::new().unwrap();
+        let secrets_file = NamedTempFile::new().unwrap();
+        std::fs::write(config_file.path(), yaml).unwrap();
+        let config =
+            Config::new_with_file_secrets(config_file.path(), secrets_file.path()).unwrap();
+        (config, config_file, secrets_file)
+    }
+
+    fn has_developer(extensions: &[ExtensionConfig]) -> bool {
+        extensions.iter().any(|ext| ext.name() == "developer")
+    }
+
+    #[test]
+    fn builtin_developer_loads_when_config_is_empty() {
+        let (config, _c, _s) = config_with_yaml("");
+        let selected = selected_builtin_extensions(&config, &["developer".to_string()]);
+        assert!(
+            has_developer(&selected),
+            "developer should load by default on a fresh config"
+        );
+    }
+
+    #[test]
+    fn builtin_developer_loads_when_explicitly_enabled() {
+        let (config, _c, _s) = config_with_yaml(
+            r#"
+extensions:
+  developer:
+    enabled: true
+    type: builtin
+    name: developer
+"#,
+        );
+        let selected = selected_builtin_extensions(&config, &["developer".to_string()]);
+        assert!(has_developer(&selected));
+    }
+
+    #[test]
+    fn builtin_developer_skipped_when_explicitly_disabled() {
+        let (config, _c, _s) = config_with_yaml(
+            r#"
+extensions:
+  developer:
+    enabled: false
+    type: builtin
+    name: developer
+"#,
+        );
+        let selected = selected_builtin_extensions(&config, &["developer".to_string()]);
+        assert!(
+            !has_developer(&selected),
+            "developer must NOT load when the user disabled it (issue #10221)"
+        );
+    }
 
     #[test_case(
         McpServer::Stdio(
