@@ -69,3 +69,30 @@
 
 **Caveat**
 - Desktop app (GUI launch) doesn't source ~/.zshrc — no ZHIPU_API_KEY env. If desktop use needed on zai, one-time `goose configure` to store the key in keyring.
+
+## 2026-07-04 — Session 1 (cont): spine item 2 — routing
+
+**Recon result: most of the routing matrix already exists upstream**
+- Subagent pinning: `GOOSE_SUBAGENT_PROVIDER`/`GOOSE_SUBAGENT_MODEL` + per-`delegate()` params + recipe settings (summon.rs:1648).
+- Planner pinning: `GOOSE_PLANNER_PROVIDER`/`GOOSE_PLANNER_MODEL`.
+- `/model <name>`: same-provider switch existed.
+- Old `GOOSE_LEAD_MODEL` (blog 2025-06) removed from source.
+
+**What we added (fork commits)**
+1. `GOOSE_FAST_PROVIDER` (`crates/goose/src/model_config.rs`): routes fast tasks (compaction, session naming, summarization, orchestrator summaries) to a different provider. Model = `GOOSE_FAST_MODEL` or the fast provider's declared fast model. Any failure → warn + fall back to session provider; a bad route can never break a session.
+2. `/model <provider> <model>` (`crates/goose-cli/src/session/mod.rs`, `input.rs`): cross-provider session switch, persisted to session record.
+
+**Verified live (fork binary)**
+- zai/glm-5.2 session with `GOOSE_FAST_PROVIDER=custom_deepseek GOOSE_FAST_MODEL=deepseek-chat`: log shows "Routing fast task to custom_deepseek deepseek-chat", session named, no fallback.
+- Broken DEEPSEEK key: auth error → warned → fell back to main model, session unaffected.
+- `/model custom_deepseek deepseek-chat` in interactive session (expect-driven): "Session switched from 'glm-5.2' (zai) to 'deepseek-chat'…", session DB provider_name=custom_deepseek.
+
+**Token-cost impact**
+- Fast tasks are the highest-frequency background LLM calls. Routing them zai→deepseek-chat: $1.4→$0.14/MTok input, $4.4→$0.28/MTok output (~10x cheaper) on every compaction/naming/summarize call.
+
+**Notes**
+- Fork's first interactive run wrote `GOOSE_TELEMETRY_ENABLED: true` to config.yaml (consent prompt auto-answered by scripted test input). Flag for Charles: flip to false if unwanted; spec's telemetry-isolation work comes later.
+- Recommended config once fork is daily driver: `GOOSE_FAST_PROVIDER: custom_deepseek`, `GOOSE_FAST_MODEL: deepseek-chat`. Do NOT set on brew binary (it lacks GOOSE_FAST_PROVIDER; GOOSE_FAST_MODEL alone would 404 against zai and spam fallback warnings).
+
+**Next step**
+- Spine item 3: tool bridge parity check across formats (openai/anthropic), then TOKEN ECONOMY layer (Part 4): budgets + cache-hit surfacing.
