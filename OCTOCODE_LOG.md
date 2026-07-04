@@ -1,0 +1,57 @@
+# OctoCode Log
+
+## 2026-07-03 — Session 1: architecture map + toolchain check
+
+**What changed**
+- Produced `OCTOCODE_ARCHMAP.md` — 1-page map of provider abstraction, routing insertion point, token accounting, prompt construction, tool transport, plugin points. Awaiting Charles's sign-off before v1.0 spine implementation.
+- Created this log.
+
+**Findings**
+- Goose already has: Provider trait with streaming + cache-token usage extraction, 30+ declarative providers (DeepSeek listed), Anthropic prompt-caching (system/tools/messages), canonical model pricing, per-session cost accumulation, auto-compaction at 80%, parallel tool execution, hooks (11 events), plugins/skills, scheduler, Telegram gateway, local inference (llama.cpp/MLX). v1.0 is more extension than rewrite.
+- Z.AI /v1 bug root cause: `openai_compatible.rs:121` appends `chat/completions` to a configurable `completions_prefix` — a declarative GLM definition with the right path is the clean fix.
+- No router exists — clean greenfield at `model_config.rs` + subagent spawn.
+
+**Token-cost impact**
+- None yet (no runtime changes). Map identifies existing cache-token plumbing (`Usage.cache_read/write_input_tokens`) as the base for Part 4 accounting.
+
+**Blockers (escalated)**
+1. Disk full: 537MB free of 228GB (97%). Debug build died with `No space left on device`. Needs ~15-25GB free. Candidates: `~/.ollama` 18G (models), `~/Library/Caches` 7.6G, `~/.hermes` 6G, `~/.npm` 4G, `~/.cache` 3.3G. Not deleting anything without approval.
+2. v8 build script (dep `v8-goose-145.0.2`) downloads prebuilt v8 via Python 3.14 urllib → `SSL: CERTIFICATE_VERIFY_FAILED`. Fix on retry: run `/Applications/Python 3.14/Install Certificates.command` (or set `SSL_CERT_FILE` to a certifi bundle).
+
+**Next step**
+- Charles: free disk + sign off on map (or amend). Then implement spine item 1: GLM/MiniMax/DeepSeek first-class provider definitions + canonical pricing.
+
+## 2026-07-04 — Session 1 (cont): blockers cleared, spine item 1
+
+**Approvals**
+- Charles approved architecture map + cache cleanup (npm/.cache/Library caches, ~15GB freed).
+
+**Blockers resolved**
+1. Disk: 537MB → ~9.7GB free after approved cache cleanup.
+2. v8 SSL: ran `Install Certificates.command` for Python 3.14 — v8 download now works.
+3. Build ICE root-caused: `librusty_v8.a` truncated at 112,427,008 bytes (disk filled mid-download on first build); rustc archive reader panicked with exactly that slice length. Deleted `target/debug/gn_out` + v8-goose artifacts; rebuild in progress.
+
+**Spine item 1 findings (big scope reduction)**
+- Upstream already ships first-class defs: `zai.json` (glm-5.2, 1M ctx, anthropic engine, fast_model glm-4.5-air), `custom_deepseek` (deepseek-chat + deepseek-reasoner). The manual OPENAI_HOST shell hacks are obsolete — `GOOSE_PROVIDER=zai` + `ZHIPU_API_KEY` is the supported path.
+- Canonical pricing already present: zhipuai/glm-5.2 ($1.4/$4.4, cache_read $0.26), minimax/MiniMax-M3 ($0.3/$1.2, cache_read $0.06, 1M ctx), deepseek/deepseek-chat + reasoner ($0.14/$0.28, cache_read $0.0028, 1M ctx). Cost dashboard foundation exists.
+- Only real gap: minimax.json lacked M3. **Changed**: added `MiniMax-M3` (context_limit 1000000) to `crates/goose-providers/src/declarative/definitions/minimax.json`. Bundled-provider validation test covers JSON shape.
+
+**Token-cost impact**
+- zai anthropic engine gets Anthropic-style prompt caching (system/tools/last-2-messages cache_control) for free → GLM cache_read at $0.26 vs $1.4 input.
+
+**Next step**
+- Verify build + run `cargo test -p goose-providers` for def validation. Then spine item 2: router module + per-task pinning.
+
+**Build saga — root causes (for the record)**
+1. Disk-full build #1 left a truncated `librusty_v8.a` (112,427,008 bytes vs 112,939,632 expected) → deterministic rustc ICE. Fixed by deleting `target/debug/gn_out` + v8-goose artifacts.
+2. Same disk-full event corrupted the compiled `.rmeta` of the vendored `v8` shim → 156 phantom compile errors in `deno_core` (E0061/E0432 storms). Cargo trusted the fingerprint; `.crate` archives verified pristine (checksums match lock), upstream CI green on identical commit. Fixed by `cargo clean -p v8 -p serde_v8 -p deno_core -p deno_ops -p deno_error`.
+3. Lesson: macOS Rust builds have zero upstream CI coverage for the full workspace (ubuntu tests workspace; macOS builds only `-p goose-cli`). Full workspace debug build needs >18GB free. Standard dev flow on this machine: `cargo build -p goose-cli` with `CARGO_INCREMENTAL=0` until disk situation improves.
+
+**Verified (2026-07-04)**
+- `cargo build -p goose-cli` (CARGO_INCREMENTAL=0, CARGO_PROFILE_DEV_DEBUG=0): Finished in 8m04s. Binary runs (`goose 1.41.0`).
+- `cargo test -p goose-providers declarative`: 10 passed, 0 failed — covers the minimax.json change via `all_bundled_providers_are_valid`.
+- Committed `da52c538b feat(providers): add MiniMax-M3 to MiniMax declarative provider` (local main, not pushed).
+- Spine item 1 complete. Config migration for Charles (replaces ~/.zshrc hacks): `GOOSE_PROVIDER=zai` + `ZHIPU_API_KEY` for GLM-5.2; `custom_deepseek` + `DEEPSEEK_API_KEY` for V4/R1; `minimax` + `MINIMAX_API_KEY` for M3.
+
+**Next step**
+- Spine item 2: router module (`crates/goose/src/router/`) with per-task pinning + `/model` override, generalizing the `complete_fast()` pattern in `model_config.rs`.
