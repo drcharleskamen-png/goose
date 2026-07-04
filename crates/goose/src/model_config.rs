@@ -78,6 +78,71 @@ fn configured_fast_model_name() -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+fn configured_fast_provider_name() -> Option<String> {
+    Config::global()
+        .get_param::<String>("GOOSE_FAST_PROVIDER")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// Resolve the provider to run fast tasks on. `GOOSE_FAST_PROVIDER` routes
+/// them to a different provider (typically a cheaper model for compaction,
+/// naming, summarization); `GOOSE_FAST_MODEL` or that provider's declared
+/// fast model picks the model. Returns None (use the session provider) when
+/// unset, when it names the session provider, or when setup fails — fast
+/// tasks must never break on routing config.
+async fn resolve_fast_provider(
+    provider: &dyn Provider,
+) -> Option<(std::sync::Arc<dyn Provider>, ModelConfig)> {
+    let fast_provider_name = configured_fast_provider_name()?;
+    if fast_provider_name == provider.get_name() {
+        return None;
+    }
+
+    let Some(model_name) =
+        configured_fast_model_name().or(provider_default_fast_model(&fast_provider_name).await)
+    else {
+        tracing::warn!(
+            "GOOSE_FAST_PROVIDER '{}' has no fast model; set GOOSE_FAST_MODEL. Using session provider.",
+            fast_provider_name
+        );
+        return None;
+    };
+
+    let model_config = match model_config_from_user_config(&fast_provider_name, &model_name) {
+        Ok(config) => config,
+        Err(e) => {
+            tracing::warn!(
+                "Invalid fast model '{}' for GOOSE_FAST_PROVIDER '{}': {}. Using session provider.",
+                model_name,
+                fast_provider_name,
+                e
+            );
+            return None;
+        }
+    };
+
+    match crate::providers::create(&fast_provider_name, Vec::new()).await {
+        Ok(fast_provider) => {
+            tracing::info!(
+                "Routing fast task to {} {}",
+                fast_provider_name,
+                model_config.model_name
+            );
+            Some((fast_provider, model_config))
+        }
+        Err(e) => {
+            tracing::warn!(
+                "GOOSE_FAST_PROVIDER '{}' unavailable: {}. Using session provider.",
+                fast_provider_name,
+                e
+            );
+            None
+        }
+    }
+}
+
 /// Resolve the model config to use for lightweight "fast" tasks (session
 /// naming, compaction, summarization). Resolution order:
 ///   1. `GOOSE_FAST_MODEL` (user override)
@@ -114,19 +179,30 @@ pub async fn complete_fast(
     messages: &[Message],
     tools: &[Tool],
 ) -> Result<(Message, ProviderUsage), ProviderError> {
-    let fast_model_config = get_fast_model(provider.get_name(), model_config)
-        .await
-        .map_err(|e| ProviderError::ExecutionError(e.to_string()))?
-        .with_thinking_effort(ThinkingEffort::Off);
+    let fast_provider = resolve_fast_provider(provider).await;
+    let fast_model_config = match &fast_provider {
+        Some((_, config)) => config.clone(),
+        None => get_fast_model(provider.get_name(), model_config)
+            .await
+            .map_err(|e| ProviderError::ExecutionError(e.to_string()))?,
+    }
+    .with_thinking_effort(ThinkingEffort::Off);
+    let fast_target: &dyn Provider = match &fast_provider {
+        Some((p, _)) => p.as_ref(),
+        None => provider,
+    };
 
     match crate::session_context::with_session_id(
         Some(session_id.to_string()),
-        provider.complete(&fast_model_config, system, messages, tools),
+        fast_target.complete(&fast_model_config, system, messages, tools),
     )
     .await
     {
         Ok(response) => Ok(response),
-        Err(e) if fast_model_config.model_name != model_config.model_name => {
+        Err(e)
+            if fast_provider.is_some()
+                || fast_model_config.model_name != model_config.model_name =>
+        {
             tracing::warn!(
                 "Fast model {} failed with error: {}. Falling back to main model {}",
                 fast_model_config.model_name,
