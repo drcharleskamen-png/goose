@@ -416,6 +416,7 @@ fn print_help() {
 /prompt <n> [--info] [key=value...] - Get prompt info or execute a prompt
 /mode <name> - Set the goose mode to use ({modes})
 /model [name] - Show the current model, or switch models for this session while keeping the same provider
+/model <provider> <model> - Switch this session to a different provider and model (e.g. /model custom_deepseek deepseek-chat)
 /plan <message_text> -  Enters 'plan' mode with optional message. Create a plan based on the current messages and asks user if they want to act on it.
                         If user acts on the plan, goose mode is set to 'auto' and returns to 'normal' goose mode.
                         To warm up goose before using '/plan', we recommend setting '/mode approve' & putting appropriate context into goose.

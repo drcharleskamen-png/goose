@@ -823,11 +823,19 @@ impl CliSession {
             return Ok(());
         }
 
-        let model_name = model.unwrap_or_default().trim();
-        if model_name.is_empty() {
+        let model_arg = model.unwrap_or_default().trim();
+        if model_arg.is_empty() {
             output::render_error("Model name cannot be empty");
             return Ok(());
         }
+
+        // "/model <provider> <model>" switches provider too
+        let (target_provider_name, model_name) = match model_arg.split_once(char::is_whitespace) {
+            Some((provider_name, model_name)) => {
+                (provider_name.trim().to_string(), model_name.trim())
+            }
+            None => (current_provider_name.clone(), model_arg),
+        };
 
         if current_provider_name.ends_with("-acp") {
             output::render_error(
@@ -845,12 +853,13 @@ impl CliSession {
         }
 
         let new_model_config =
-            build_switched_model_config(&current_provider_name, model_name, &current_model_config)?;
+            build_switched_model_config(&target_provider_name, model_name, &current_model_config)?;
 
         let configured_effort = Config::global().get_goose_thinking_effort();
         let new_effort = new_model_config.thinking_effort().or(configured_effort);
         let current_effort = current_model_config.thinking_effort().or(configured_effort);
-        if new_model_config.model_name == current_model_config.model_name
+        if target_provider_name == current_provider_name
+            && new_model_config.model_name == current_model_config.model_name
             && new_effort == current_effort
         {
             output::goose_mode_message(&format!(
@@ -861,7 +870,7 @@ impl CliSession {
         }
 
         let extensions = self.agent.get_extension_configs().await;
-        let new_provider = goose::providers::create(&current_provider_name, extensions)
+        let new_provider = goose::providers::create(&target_provider_name, extensions)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create provider: {e}"))?;
 
@@ -871,10 +880,17 @@ impl CliSession {
 
         let mode = self.agent.goose_mode().await;
         self.agent.update_goose_mode(mode, &self.session_id).await?;
-        output::goose_mode_message(&format!(
-            "Session model switched from '{}' to '{}' for provider '{}'",
-            current_model_name, model_name, current_provider_name
-        ));
+        if target_provider_name == current_provider_name {
+            output::goose_mode_message(&format!(
+                "Session model switched from '{}' to '{}' for provider '{}'",
+                current_model_name, model_name, current_provider_name
+            ));
+        } else {
+            output::goose_mode_message(&format!(
+                "Session switched from '{}' ({}) to '{}' ({})",
+                current_model_name, current_provider_name, model_name, target_provider_name
+            ));
+        }
         Ok(())
     }
 
