@@ -55,3 +55,17 @@
 
 **Next step**
 - Spine item 2: router module (`crates/goose/src/router/`) with per-task pinning + `/model` override, generalizing the `complete_fast()` pattern in `model_config.rs`.
+
+## 2026-07-04 — Session 1 (cont): provider config migration
+
+**What changed**
+- `~/.zshrc` (backup: `~/.zshrc.bak-20260704`): switchers rewritten from host-override hacks to native provider defs — goose→`zai`/glm-5.2, gmm→`minimax`/MiniMax-M3, gds/gdsr→`custom_deepseek`, gcc unchanged. Added `ZHIPU_API_KEY` mirror of `GLM_API_KEY` (zai def reads ZHIPU_API_KEY).
+- `~/.config/goose/config.yaml` (backup: `config.yaml.bak-20260704`): added `zai` provider entry, `active_provider: openai` → `zai`. Fixes bare `goose` binary silently pointing glm-5.2 at api.openai.com.
+
+**Verified** (live runs, session DB provider_name): zai glm-5.2 ✓, minimax MiniMax-M3 ✓ (brew binary accepts M3 without static def entry), custom_deepseek deepseek-chat ✓ + deepseek-reasoner ✓, new `goose()` function ✓, bare `command goose` via config default ✓.
+
+**Token-cost impact**
+- Sessions now attributed to correct canonical providers → `accumulated_cost` uses real pricing (zhipuai/glm-5.2 etc.) instead of misattributing GLM traffic to anthropic/openai. zai route keeps Anthropic-style prompt caching.
+
+**Caveat**
+- Desktop app (GUI launch) doesn't source ~/.zshrc — no ZHIPU_API_KEY env. If desktop use needed on zai, one-time `goose configure` to store the key in keyring.
