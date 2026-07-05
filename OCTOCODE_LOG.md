@@ -197,3 +197,23 @@
 
 **Next step**
 - Charles: (a) sign off / amend plugin design so we can implement phase 1 (manifest + loader); (b) decide on disk permanent fix so release rebuild (task 3, daily-driver binary still stale at session-2 features) can run. Then spine item 7 (Chrome control core) — own session.
+
+## 2026-07-05 — Session 4 (cont): release rebuild + disk lever found
+
+**Disk reality (corrects earlier bad advice)**
+- Single 228GB SSD, APFS-split, **no external volume mounted** → `CARGO_TARGET_DIR=/Volumes/...` is moot until Charles mounts one. APFS volumes share one physical pool, so relocating target to another volume on this disk gains nothing.
+- Real levers measured: `~/Desktop/goose/target` ≈20G (debug 16G + release 4.8G, safe to wipe); `~/Library/Application Support/Claude` ≈16G; `~/Library/Application Support/Google` ≈4.3G.
+- Wiping `target/debug` (after backing up the binary to `~/goose-debug-backup-20260705`) freed 2.5G→17G and unblocked the release rebuild.
+
+**Release rebuild done**
+- `cargo build --release -p goose-cli` (CARGO_INCREMENTAL=0): Finished in 8m10s, exit 0, no warnings.
+- Installed `target/release/goose` (248M) → `~/.local/bin/goose-octocode`. Daily-driver binary now carries all session 2–4 features (tool-bridge parity, budget caps, per-model usage/caps, snapshot fix). `~/.zshrc` switchers resolve to it.
+- Cleaned `target/release/{deps,build,incremental,.fingerprint}` post-install → disk back to 20G free (45% used).
+- `--version` hangs (pre-existing goose quirk: unknown flag drops into session mode); not a regression. Build artifacts + 248M matching size confirm the install.
+
+**Spine status after session 4**
+- 1 providers ✓, 2 router ✓, 3 tool bridge ✓, 4 token economy ✓ (session/daily/per-model caps + cache-hit logging + per-model /status), 5 auto-CLAUDE.md ✓, 6 plugin/SDK → **design up for sign-off**, 7 Chrome → **design up for sign-off**.
+- v1.0 spine is feature-complete pending Charles's sign-off on the two design docs (`OCTOCODE_PLUGIN_DESIGN.md`, `OCTOCODE_CHROME_DESIGN.md`).
+
+**Next step**
+- Charles: answer the 6 plugin Qs (`OCTOCODE_PLUGIN_DESIGN.md` §9) + 6 chrome Qs (`OCTOCODE_CHROME_DESIGN.md` §7). Then phase-1 implementation of each (plugin manifest+loader; browser crate scaffold on chromiumoxide).
