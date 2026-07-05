@@ -535,6 +535,24 @@ impl Agent {
             .and_then(|pn| self.accumulate_cost(session.accumulated_cost, usage, pn))
             .or(session.accumulated_cost);
 
+        let mut per_model = session.per_model_usage.clone().unwrap_or_default();
+        let entry = per_model.entry(usage.model.clone()).or_default();
+        *entry += usage.usage;
+
+        let cache_read = usage.usage.cache_read_input_tokens.unwrap_or(0).max(0) as i64;
+        let input = usage.usage.input_tokens.unwrap_or(0).max(0) as i64;
+        if input > 0 {
+            let pct = ((cache_read as f64 / input as f64) * 100.0).round() as i64;
+            debug!(
+                model = %usage.model,
+                input_tokens = input,
+                output_tokens = usage.usage.output_tokens.unwrap_or(0).max(0) as i64,
+                cache_read_tokens = cache_read,
+                cache_hit_pct = pct,
+                "TURN_USAGE"
+            );
+        }
+
         let current_usage = if is_compaction_usage {
             // After compaction: summary output becomes new input context
             let new_input = usage.usage.output_tokens;
@@ -549,6 +567,7 @@ impl Agent {
             .usage(current_usage)
             .accumulated_usage(accumulated_usage)
             .accumulated_cost(accumulated_cost)
+            .per_model_usage(per_model)
             .apply()
             .await?;
 

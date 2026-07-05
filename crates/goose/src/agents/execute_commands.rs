@@ -318,6 +318,48 @@ impl Agent {
             })
             .unwrap_or_else(|| "none".to_string());
 
+        let per_model_section = metadata
+            .as_ref()
+            .and_then(|s| s.per_model_usage.as_ref())
+            .map(|pm| {
+                let provider_name = metadata
+                    .as_ref()
+                    .and_then(|s| s.provider_name.as_deref())
+                    .unwrap_or("");
+                let mut lines: Vec<String> = pm
+                    .iter()
+                    .filter(|(_, u)| {
+                        u.input_tokens.unwrap_or(0) > 0 || u.output_tokens.unwrap_or(0) > 0
+                    })
+                    .map(|(model, u)| {
+                        let input = u.input_tokens.unwrap_or(0).max(0) as i64;
+                        let output = u.output_tokens.unwrap_or(0).max(0) as i64;
+                        let cache_read = u.cache_read_input_tokens.unwrap_or(0).max(0) as i64;
+                        let cache_pct = if input > 0 {
+                            ((cache_read as f64 / input as f64) * 100.0).round() as i64
+                        } else {
+                            0
+                        };
+                        let cost_str = crate::providers::canonical::maybe_get_canonical_model(
+                            provider_name, model,
+                        )
+                        .and_then(|c| c.cost.estimate_cost(u))
+                        .map(|c| format!("${c:.4}"))
+                        .unwrap_or_else(|| "—".to_string());
+                        format!(
+                            "    {model:<24} {input} in / {output} out  cache {cache_pct}%  {cost_str}"
+                        )
+                    })
+                    .collect();
+                lines.sort();
+                if lines.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n - Per-model usage:\n{}", lines.join("\n"))
+                }
+            })
+            .unwrap_or_default();
+
         let text = format!(
             "**Session status**\n\n\
              - Model: {}\n\
@@ -326,7 +368,7 @@ impl Agent {
              - Tokens (lifetime): {}\n\
              - Context: {} / {} tokens ({})\n\
              - Cost (lifetime): {}\n\
-             - Cache reads: {}",
+             - Cache reads: {}{}",
             model_config.model_name,
             provider.get_name(),
             goose_mode,
@@ -336,6 +378,7 @@ impl Agent {
             context_pct,
             cost_line,
             cache_line,
+            per_model_section,
         );
 
         Ok(Some(user_only_assistant_text(text)))

@@ -23,7 +23,7 @@ use std::sync::{Arc, LazyLock};
 use tracing::{info, warn};
 use utoipa::ToSchema;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 14;
+pub const CURRENT_SCHEMA_VERSION: i32 = 15;
 pub const SESSIONS_FOLDER: &str = "sessions";
 pub const DB_NAME: &str = "sessions.db";
 const MILLISECOND_TIMESTAMP_THRESHOLD: i64 = 10_000_000_000;
@@ -76,6 +76,8 @@ pub struct Session {
     #[serde(default)]
     pub accumulated_usage: Usage,
     pub accumulated_cost: Option<f64>,
+    #[serde(default)]
+    pub per_model_usage: Option<HashMap<String, Usage>>,
     pub schedule_id: Option<String>,
     pub recipe: Option<Recipe>,
     pub user_recipe_values: Option<HashMap<String, String>>,
@@ -130,6 +132,7 @@ pub struct SessionUpdateBuilder<'a> {
     usage: Option<Usage>,
     accumulated_usage: Option<Usage>,
     accumulated_cost: Option<Option<f64>>,
+    per_model_usage: Option<Option<HashMap<String, Usage>>>,
     schedule_id: Option<Option<String>>,
     recipe: Option<Option<Recipe>>,
     user_recipe_values: Option<Option<HashMap<String, String>>>,
@@ -161,6 +164,7 @@ impl<'a> SessionUpdateBuilder<'a> {
             usage: None,
             accumulated_usage: None,
             accumulated_cost: None,
+            per_model_usage: None,
             schedule_id: None,
             recipe: None,
             user_recipe_values: None,
@@ -221,6 +225,11 @@ impl<'a> SessionUpdateBuilder<'a> {
 
     pub fn accumulated_cost(mut self, cost: Option<f64>) -> Self {
         self.accumulated_cost = Some(cost);
+        self
+    }
+
+    pub fn per_model_usage(mut self, per_model: HashMap<String, Usage>) -> Self {
+        self.per_model_usage = Some(Some(per_model));
         self
     }
 
@@ -648,6 +657,7 @@ impl Default for Session {
             usage: Usage::default(),
             accumulated_usage: Usage::default(),
             accumulated_cost: None,
+            per_model_usage: None,
             schedule_id: None,
             recipe: None,
             user_recipe_values: None,
@@ -738,6 +748,11 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for Session {
                     .flatten(),
             },
             accumulated_cost: row.try_get("accumulated_cost").ok().flatten(),
+            per_model_usage: row
+                .try_get::<Option<String>, _>("per_model_usage_json")
+                .ok()
+                .flatten()
+                .and_then(|json| serde_json::from_str(&json).ok()),
             schedule_id: row.try_get("schedule_id")?,
             recipe,
             user_recipe_values,
@@ -868,6 +883,7 @@ impl SessionStorage {
                 accumulated_cache_read_tokens INTEGER,
                 accumulated_cache_write_tokens INTEGER,
                 accumulated_cost REAL,
+                per_model_usage_json TEXT,
                 schedule_id TEXT,
                 recipe_json TEXT,
                 user_recipe_values_json TEXT,
@@ -988,6 +1004,11 @@ impl SessionStorage {
             None => None,
         };
 
+        let per_model_usage_json = match &session.per_model_usage {
+            Some(per_model) => Some(serde_json::to_string(per_model)?),
+            None => None,
+        };
+
         sqlx::query(
             r#"
         INSERT INTO sessions (
@@ -997,9 +1018,10 @@ impl SessionStorage {
             accumulated_total_tokens, accumulated_input_tokens, accumulated_output_tokens,
             accumulated_cache_read_tokens, accumulated_cache_write_tokens,
             accumulated_cost,
+            per_model_usage_json,
             schedule_id, recipe_json, user_recipe_values_json,
             provider_name, model_config_json, goose_mode
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         )
         .bind(&session.id)
@@ -1021,6 +1043,7 @@ impl SessionStorage {
         .bind(session.accumulated_usage.cache_read_input_tokens)
         .bind(session.accumulated_usage.cache_write_input_tokens)
         .bind(session.accumulated_cost)
+        .bind(per_model_usage_json)
         .bind(&session.schedule_id)
         .bind(recipe_json)
         .bind(user_recipe_values_json)
@@ -1337,6 +1360,19 @@ impl SessionStorage {
                     }
                 }
             }
+            15 => {
+                let has_per_model = sqlx::query_scalar::<_, i32>(
+                    "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'per_model_usage_json'",
+                )
+                .fetch_one(&mut **tx)
+                .await?
+                    > 0;
+                if !has_per_model {
+                    sqlx::query("ALTER TABLE sessions ADD COLUMN per_model_usage_json TEXT")
+                        .execute(&mut **tx)
+                        .await?;
+                }
+            }
             _ => {
                 anyhow::bail!("Unknown migration version: {}", version);
             }
@@ -1400,6 +1436,7 @@ impl SessionStorage {
                accumulated_total_tokens, accumulated_input_tokens, accumulated_output_tokens,
                accumulated_cache_read_tokens, accumulated_cache_write_tokens,
                accumulated_cost,
+               per_model_usage_json,
                schedule_id, recipe_json, user_recipe_values_json,
                provider_name, model_config_json, goose_mode,
                archived_at, project_id
@@ -1472,6 +1509,7 @@ impl SessionStorage {
         add_update!(builder.accumulated_usage, "accumulated_cache_read_tokens");
         add_update!(builder.accumulated_usage, "accumulated_cache_write_tokens");
         add_update!(builder.accumulated_cost, "accumulated_cost");
+        add_update!(builder.per_model_usage, "per_model_usage_json");
         add_update!(builder.schedule_id, "schedule_id");
         add_update!(builder.recipe, "recipe_json");
         add_update!(builder.user_recipe_values, "user_recipe_values_json");
@@ -1524,6 +1562,10 @@ impl SessionStorage {
         }
         if let Some(ac) = builder.accumulated_cost {
             q = q.bind(ac);
+        }
+        if let Some(per_model) = builder.per_model_usage {
+            let per_model_json = per_model.map(|pm| serde_json::to_string(&pm)).transpose()?;
+            q = q.bind(per_model_json);
         }
         if let Some(sid) = builder.schedule_id {
             q = q.bind(sid);

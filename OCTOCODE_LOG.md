@@ -145,3 +145,24 @@
 
 **Next step**
 - Token economy continuation: per-model budget attribution + cache-hit logging; then plugin/SDK foundation.
+
+---
+
+### Session 3 — 2026-07-04: per-model attribution + cache-hit logging
+
+**What changed (uncommitted, this session)**
+- `Session.per_model_usage: Option<HashMap<String, Usage>>` (schema v14 → v15, `session_manager.rs`): per-model token accumulation persisted across turns. Migration v15 = `ALTER TABLE sessions ADD COLUMN per_model_usage_json TEXT` with pragma presence-guard (idempotent, mirrors v14 pattern). INSERT/UPDATE/FromRow paths wired.
+- `reply_parts.rs` `update_session_metrics`: folds each `ProviderUsage` into `per_model_usage[model]`, and emits a `TURN_USAGE` debug log (model, in/out, cache_read, cache_hit_pct) — the per-turn cache-hit logging Part 4 called for.
+- `execute_commands.rs` `/status`: renders a "Per-model usage" section (per-model in/out, cache %, and per-model USD via `canonical::maybe_get_canonical_model` + `estimate_cost`) when a session has touched >0 models with tokens.
+
+**Verified**
+- `cargo build -p goose-cli` clean; `cargo clippy -p goose-cli --all-targets -- -D warnings` clean (exit 0); `cargo fmt -p goose` clean.
+- `cargo test -p goose --lib session::` 68 passed (incl. `test_cache_token_columns_migration_and_round_trip` — same ALTER+round-trip pattern the v15 migration mirrors).
+- `cargo test -p goose --lib budget::` 3 passed; `agents::` 252 passed, 1 failed.
+- The 1 agents failure (`prompt_manager::tests::test_all_platform_extensions`, insta snapshot) is **pre-existing on HEAD `60f841afb`** — confirmed by stashing session-3 changes and re-running; it fails identically without our diff. Unrelated to per-model work (prompt_manager untouched).
+
+**Token-cost impact**
+- Per-model visibility lets a multi-provider session (zai main + deepseek fast, via the spine-item-2 router) show which model spent what — prerequisite for per-model budget caps and for proving the >=60% cache-savings claim per provider.
+
+**Next step**
+- Re-run session tests once disk frees; then per-model budget caps (extend `budget.rs` from session/daily to per-model), then plugin/SDK foundation.
