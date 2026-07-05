@@ -405,6 +405,17 @@ impl SessionManager {
         self.storage.list_sessions().await
     }
 
+    /// Total accumulated cost (USD) across all sessions updated since `since`.
+    pub async fn total_accumulated_cost_since(&self, since: DateTime<Utc>) -> Result<f64> {
+        let pool = self.storage.pool().await?;
+        let total: Option<f64> =
+            sqlx::query_scalar("SELECT SUM(accumulated_cost) FROM sessions WHERE updated_at >= ?")
+                .bind(since)
+                .fetch_one(pool)
+                .await?;
+        Ok(total.unwrap_or(0.0))
+    }
+
     pub async fn list_sessions_by_types(&self, types: &[SessionType]) -> Result<Vec<Session>> {
         self.storage.list_sessions_by_types(Some(types)).await
     }

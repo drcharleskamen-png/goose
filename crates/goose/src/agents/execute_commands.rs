@@ -54,7 +54,29 @@ static COMMANDS: &[CommandDef] = &[
         name: "status",
         description: "Show session status: model, provider, mode, and token usage",
     },
+    CommandDef {
+        name: "agentsmd",
+        description:
+            "Generate or update this repo's AGENTS.md; proposes changes without overwriting",
+    },
 ];
+
+const AGENTS_MD_KICKOFF: &str = r#"Generate or update this repository's AGENTS.md (agent instructions file).
+
+Process:
+1. Scan the repo: build system (justfile, Makefile, package.json, Cargo.toml, CI workflows), test/lint/format commands, directory structure, entry points, existing conventions.
+2. If AGENTS.md or CLAUDE.md already exists, do NOT overwrite it. Write your proposal to AGENTS.md.proposed and finish with a drift summary: commands that changed, directories that moved, rules the existing file is missing or that no longer match repo reality.
+3. If neither exists, write AGENTS.md directly.
+
+Content rules — optimize for agent consumption, not human onboarding:
+- Markdown with short sections; no XML
+- Exact runnable commands (setup/build/test/lint) in code fences, verified against the repo's actual config files
+- Directory map with a one-line purpose per entry
+- Explicit success criteria for changes (what must pass before done)
+- One worked example of a common task done correctly (edit → verify loop)
+- Project-specific rules only; no generic advice
+- Keep it under 150 lines; every line must earn its context cost
+- If parts of the repo differ strongly, note per-directory instruction files instead of one giant file"#;
 
 pub struct ParsedSlashCommand<'a> {
     pub command: &'a str,
@@ -94,14 +116,31 @@ fn is_clear_goal_param(params_str: &str) -> bool {
 
 /// Whether a slash command should kick off an agent turn instead of just
 /// returning a confirmation. Setting a `/goal` or `/grind` (with a description,
-/// not the query or `off` forms) makes the agent start pursuing it immediately.
+/// not the query or `off` forms) makes the agent start pursuing it immediately;
+/// `/agentsmd` always starts its generation turn.
 pub fn command_starts_turn(message_text: &str) -> bool {
     let Some(parsed) = parse_slash_command(message_text) else {
         return false;
     };
+    if parsed.command == "agentsmd" {
+        return true;
+    }
     matches!(parsed.command, "goal" | "grind")
         && !parsed.params_str.is_empty()
         && !is_clear_goal_param(parsed.params_str)
+}
+
+/// The agent-visible message that starts the turn for a turn-starting command.
+pub fn turn_kickoff_text(message_text: &str) -> String {
+    let parsed = parse_slash_command(message_text);
+    let (command, params) = parsed
+        .map(|p| (p.command, p.params_str))
+        .unwrap_or(("", ""));
+    match command {
+        "agentsmd" if params.is_empty() => AGENTS_MD_KICKOFF.to_string(),
+        "agentsmd" => format!("{AGENTS_MD_KICKOFF}\n\nAdditional focus from the user: {params}"),
+        _ => format!("Start working toward this goal now:\n\n**Goal:** {params}"),
+    }
 }
 
 impl Agent {
@@ -131,6 +170,9 @@ impl Agent {
             "skills" => self.handle_skills_command(session_id).await,
             "doctor" => Ok(Some(crate::doctor::run(self, session_id).await?)),
             "status" => self.handle_status_command(session_id).await,
+            "agentsmd" => Ok(Some(Message::assistant().with_text(
+                "Scanning the repository and generating an AGENTS.md proposal…",
+            ))),
             "goal" => self.handle_goal_command(params_str).await,
             "grind" => self.handle_grind_command(params_str).await,
             _ => {
@@ -248,13 +290,43 @@ impl Agent {
             "N/A".to_string()
         };
 
+        let cost_line = metadata
+            .as_ref()
+            .and_then(|s| s.accumulated_cost)
+            .map(|c| format!("${c:.4}"))
+            .unwrap_or_else(|| "N/A (no pricing for this model)".to_string());
+
+        let cache_line = metadata
+            .as_ref()
+            .map(|s| {
+                let input = s.accumulated_usage.input_tokens.unwrap_or(0).max(0) as f64;
+                let cache_read = s
+                    .accumulated_usage
+                    .cache_read_input_tokens
+                    .unwrap_or(0)
+                    .max(0) as f64;
+                if input > 0.0 && cache_read > 0.0 {
+                    format!(
+                        "{} of {} input tokens ({}%)",
+                        cache_read as i64,
+                        input as i64,
+                        ((cache_read / input) * 100.0).round() as i64
+                    )
+                } else {
+                    "none".to_string()
+                }
+            })
+            .unwrap_or_else(|| "none".to_string());
+
         let text = format!(
             "**Session status**\n\n\
              - Model: {}\n\
              - Provider: {}\n\
              - Mode: {}\n\
              - Tokens (lifetime): {}\n\
-             - Context: {} / {} tokens ({})",
+             - Context: {} / {} tokens ({})\n\
+             - Cost (lifetime): {}\n\
+             - Cache reads: {}",
             model_config.model_name,
             provider.get_name(),
             goose_mode,
@@ -262,6 +334,8 @@ impl Agent {
             context_tokens,
             context_limit,
             context_pct,
+            cost_line,
+            cache_line,
         );
 
         Ok(Some(user_only_assistant_text(text)))
@@ -546,6 +620,22 @@ mod tests {
         // Other commands and plain prompts never start a turn here.
         assert!(!command_starts_turn("/compact"));
         assert!(!command_starts_turn("just a normal message"));
+    }
+
+    #[test]
+    fn agentsmd_always_starts_turn_with_generation_kickoff() {
+        assert!(command_starts_turn("/agentsmd"));
+        assert!(command_starts_turn("/agentsmd focus on the CI commands"));
+
+        let kickoff = turn_kickoff_text("/agentsmd");
+        assert!(kickoff.contains("AGENTS.md"));
+        assert!(kickoff.contains("do NOT overwrite"));
+
+        let with_focus = turn_kickoff_text("/agentsmd focus on the CI commands");
+        assert!(with_focus.contains("Additional focus from the user: focus on the CI commands"));
+
+        let goal = turn_kickoff_text("/goal ship it");
+        assert!(goal.contains("**Goal:** ship it"));
     }
 
     #[test]

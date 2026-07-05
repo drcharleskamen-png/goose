@@ -1632,12 +1632,9 @@ impl Agent {
                         &response.clone().with_visibility(true, false),
                     )
                     .await?;
-                let goal_text = crate::agents::execute_commands::parse_slash_command(&message_text)
-                    .map(|parsed| parsed.params_str.to_string())
-                    .unwrap_or_default();
                 let kickoff = Message::user()
-                    .with_text(format!(
-                        "Start working toward this goal now:\n\n**Goal:** {goal_text}"
+                    .with_text(crate::agents::execute_commands::turn_kickoff_text(
+                        &message_text,
                     ))
                     .with_visibility(false, true);
                 session_manager
@@ -2036,6 +2033,24 @@ impl Agent {
                             if let Some(ref usage) = usage {
                                 self.update_session_metrics(&session_config.id, session_config.schedule_id.clone(), usage, false).await?;
                                 yield AgentEvent::Usage(usage.clone());
+
+                                match crate::budget::check(&self.config.session_manager, &session_config.id).await {
+                                    crate::budget::BudgetVerdict::Exceeded(msg) => {
+                                        let message = Message::assistant().with_text(msg).user_only();
+                                        session_manager.add_message(&session_config.id, &message).await?;
+                                        yield AgentEvent::Message(message);
+                                        exit_chat = true;
+                                    }
+                                    crate::budget::BudgetVerdict::Warn(msg) => {
+                                        yield AgentEvent::Message(
+                                            Message::assistant().with_system_notification(
+                                                SystemNotificationType::InlineMessage,
+                                                msg,
+                                            )
+                                        );
+                                    }
+                                    crate::budget::BudgetVerdict::Ok => {}
+                                }
                             }
 
                             if let Some(response) = response {
