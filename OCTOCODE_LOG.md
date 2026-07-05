@@ -166,3 +166,32 @@
 
 **Next step**
 - Re-run session tests once disk frees; then per-model budget caps (extend `budget.rs` from session/daily to per-model), then plugin/SDK foundation.
+
+---
+
+## 2026-07-05 — Session 4: snapshot fix, per-model caps, plugin design
+
+**What changed (commits 213d9f53f, 60063ac35, 9f3a64b91, + plugin-design doc this session)**
+
+1. **Snapshot refresh (`213d9f53f`)** — `agents::prompt_manager::tests::test_all_platform_extensions` insta snapshot was stale on a clean HEAD: it included the `code_execution` platform-extension block, but that extension is `#[cfg(feature = "code-mode")]` and `default = []` (`crates/goose/Cargo.toml`), so default-feature test runs never emit it. Accepted the regenerated snapshot. `agents::` now 253/253 green.
+
+2. **Per-model budget caps (`60063ac35`, Part 4)** — `GOOSE_MAX_MODEL_COST` (model → USD map in config.yaml) extends `budget.rs` from session/daily to per-model. A multi-provider session can now hard-cap each model independently. New: `configured_model_caps()`, `model_cost()` (reuses canonical pricing — same path as `/status` per-model display), `check_model_cap()` (own exceeded/warn messages, no bogus `GOOSE_MAX_<MODEL>_COST` env hint), `check()` fetches the session row once for session + per-model caps and iterates capped models in sorted order for deterministic reporting. 6/6 budget tests pass; clippy `-D warnings` clean on goose lib/tests.
+
+3. **Mission docs committed (`9f3a64b91`)** — `OCTOCODE_SPEC.md`, `OCTOCODE_HANDOFF.md`, `OCTOCODE_PROMPT.md` added to repo (no source/secrets).
+
+4. **Plugin/SDK design proposal (this session, `OCTOCODE_PLUGIN_DESIGN.md`)** — spine item 6 design doc for sign-off. Grounded in `extension.rs` source: goose already ships a capable MCP-based plugin system (`ExtensionConfig`: Builtin/Platform/Stdio/StreamableHttp/InlinePython/Frontend + 31-key env blocklist + `available_tools` allowlist). OctoCode v1.0 = **formalize + document + add marketplace/SDK/signed-install**, NOT a new runtime. Proposal covers `octocode-plugin.yaml` manifest, git-registry + minisign marketplace, Rust+Python SDK, lazy tool loading (Part 4 integration via the spine-2 router), Docker-for-untrusted + WASM-deferred-to-post-v1 sandbox decision, 5-phase smallest-viable rollout, and 6 open questions for Charles to sign off before implementation.
+
+**Verified**
+- `cargo clippy -p goose --lib --tests -- -D warnings` clean.
+- `cargo test -p goose --lib agents::` 253/253 (was 252 + 1 stale snapshot).
+- `cargo test -p goose --lib budget::` 6/6.
+- Session 4 work committed + pushed to origin/main.
+
+**Token-cost impact**
+- Per-model caps = first per-model hard ceiling on autonomous spend; combined with session-3 per-model visibility, a swarm operator can now bound GLM-5.2 differently from a cheap deepseek fast path. Lazy tool loading (proposed) is the bigger Part-4 win — 200+ ecosystem tools become affordable.
+
+**Blocker (escalated, recurring)**
+- Disk: 228GB volume hit 100% full mid-session (ENOSPC killed Bash, Write, even `git add`). Recovered to ~6GB after user cleanup. **5th disk-full across sessions 1–4.** Permanent fix needed: relocate `target/` via `CARGO_TARGET_DIR` to an external volume, or grow the APFS container. Without it, every release rebuild (~5GB intermediates) remains risky.
+
+**Next step**
+- Charles: (a) sign off / amend plugin design so we can implement phase 1 (manifest + loader); (b) decide on disk permanent fix so release rebuild (task 3, daily-driver binary still stale at session-2 features) can run. Then spine item 7 (Chrome control core) — own session.
