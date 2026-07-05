@@ -1070,7 +1070,11 @@ where
                             let response_str = response_chunk?;
                             if let Some(line) = strip_data_prefix(&response_str) {
                                 if line == "[DONE]" {
-                                    break 'outer;
+                                    // Stream ended mid-assembly: fall through and yield
+                                    // whatever tool calls were buffered instead of
+                                    // silently dropping them.
+                                    done = true;
+                                    continue;
                                 }
 
                                 let tool_chunk: StreamingChunk = parse_streaming_chunk(line)?;

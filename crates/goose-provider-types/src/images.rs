@@ -14,7 +14,7 @@ pub enum ImageFormat {
 }
 
 /// Convert an image content into an image json based on format
-pub fn convert_image(image: &ImageContent, image_format: &ImageFormat) -> Value {
+pub fn convert_image(image: &RawImageContent, image_format: &ImageFormat) -> Value {
     match image_format {
         ImageFormat::OpenAi => json!({
             "type": "image_url",

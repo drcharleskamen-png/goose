@@ -216,6 +216,7 @@ fn format_messages_with_options(
                 }
                 MessageContent::ToolResponse(tool_response) => match &tool_response.tool_result {
                     Ok(result) => {
+                        let mut images = Vec::new();
                         let text = result
                             .content
                             .iter()
@@ -229,15 +230,31 @@ fn format_messages_with_options(
                                         return Some(text);
                                     }
                                 }
+                                if let Some(image) = c.as_image() {
+                                    images.push(convert_image(image, &ImageFormat::Anthropic));
+                                }
                                 None
                             })
                             .collect::<Vec<_>>()
                             .join("\n");
 
+                        // Anthropic supports structured tool_result content; only
+                        // switch to the block-array form when images are present.
+                        let result_content = if images.is_empty() {
+                            json!(text)
+                        } else {
+                            let mut blocks = Vec::new();
+                            if !text.is_empty() {
+                                blocks.push(json!({ TYPE_FIELD: TEXT_TYPE, TEXT_TYPE: text }));
+                            }
+                            blocks.extend(images);
+                            json!(blocks)
+                        };
+
                         content.push(json!({
                             TYPE_FIELD: TOOL_RESULT_TYPE,
                             TOOL_USE_ID_FIELD: tool_response.id,
-                            CONTENT_FIELD: text
+                            CONTENT_FIELD: result_content
                         }));
                     }
                     Err(tool_error) => {
@@ -478,9 +495,24 @@ pub fn response_to_message(response: &Value) -> Result<Message> {
                     .get(INPUT_FIELD)
                     .ok_or_else(|| anyhow!("Missing tool_use input"))?;
 
-                let tool_call =
-                    CallToolRequestParams::new(name).with_arguments(object(input.clone()));
-                message = message.with_tool_request(id, Ok(tool_call));
+                if input.is_object() {
+                    let tool_call =
+                        CallToolRequestParams::new(name).with_arguments(object(input.clone()));
+                    message = message.with_tool_request(id, Ok(tool_call));
+                } else {
+                    // rmcp's `object()` debug-asserts on non-objects and silently
+                    // yields empty args in release; surface a tool error so the
+                    // model retries with a proper object instead.
+                    let error = ErrorData::new(
+                        ErrorCode::INVALID_PARAMS,
+                        format!(
+                            "Tool arguments for {} (id {}) must be a JSON object, got: {}",
+                            name, id, input
+                        ),
+                        None,
+                    );
+                    message = message.with_tool_request(id, Err(error));
+                }
             }
             Some(THINKING_TYPE) => {
                 let thinking = block
@@ -902,12 +934,17 @@ where
                                 json!({})
                             } else {
                                 match crate::json::parse_tool_arguments(&args) {
-                                    Some(parsed) => parsed,
-                                    None => {
-                                        let message_text = crate::json::truncation_error_message(&args)
-                                            .unwrap_or_else(|| {
-                                                format!("Could not parse tool arguments: {args}")
-                                            });
+                                    Some(parsed) if parsed.is_object() => parsed,
+                                    other => {
+                                        let message_text = match other {
+                                            Some(parsed) => format!(
+                                                "Tool arguments for {name} must be a JSON object, got: {parsed}"
+                                            ),
+                                            None => crate::json::truncation_error_message(&args)
+                                                .unwrap_or_else(|| {
+                                                    format!("Could not parse tool arguments: {args}")
+                                                }),
+                                        };
                                         let error = ErrorData::new(
                                             ErrorCode::INVALID_PARAMS,
                                             message_text,
