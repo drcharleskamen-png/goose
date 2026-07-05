@@ -96,3 +96,20 @@
 
 **Next step**
 - Spine item 3: tool bridge parity check across formats (openai/anthropic), then TOKEN ECONOMY layer (Part 4): budgets + cache-hit surfacing.
+
+## 2026-07-05 — Session 1 (cont): fork = daily driver, GLM-optimized
+
+**What changed**
+- Release build of fork CLI (26m51s), installed to `~/.local/bin/goose-octocode` (stable path — `target/` gets cleaned). `target/release` intermediates deleted (+4.8GB disk).
+- `~/.zshrc`: `OCTOCODE_BIN` resolution chain (installed copy → fresh build → brew); all switchers now run the fork binary.
+- `~/.config/goose/config.yaml`: `GOOSE_TELEMETRY_ENABLED: false` (scripted test had accidentally consented), `GOOSE_FAST_PROVIDER: custom_deepseek`, `GOOSE_FAST_MODEL: deepseek-chat`.
+
+**Verified live (fork release binary, fresh shells)**
+- `goose` → zai glm-5.2 ✓; `gmm` → minimax MiniMax-M3 ✓; `gds` → custom_deepseek ✓.
+- Fast routing engaged from config: three sessions logged "Routing fast task to custom_deepseek deepseek-chat".
+
+**GLM-optimized daily state**: glm-5.2 @ 1M ctx via zai (prompt caching on, cache reads $0.26 vs $1.4/MTok), all fast tasks on deepseek-chat ($0.14/MTok), correct per-provider cost attribution, telemetry off.
+
+**Caveats**
+- Desktop app reads same config.yaml but is a separate binary without GOOSE_FAST_PROVIDER — its fast calls warn + fall back to session provider. Harmless; goes away when desktop is built from fork.
+- Disk still chronic (~6GB free). Full rebuilds remain risky without a permanent 20GB+ cleanup.
