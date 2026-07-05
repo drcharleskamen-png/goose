@@ -290,11 +290,11 @@ impl Agent {
             "N/A".to_string()
         };
 
-        let cost_line = metadata
-            .as_ref()
-            .and_then(|s| s.accumulated_cost)
-            .map(|c| format!("${c:.4}"))
-            .unwrap_or_else(|| "N/A (no pricing for this model)".to_string());
+        let cost_line = match metadata.as_ref().and_then(|s| s.accumulated_cost) {
+            Some(c) => format!("${c:.4}"),
+            None if lifetime_tokens == 0 => "$0.0000".to_string(),
+            None => "N/A (no pricing for this model)".to_string(),
+        };
 
         let cache_line = metadata
             .as_ref()

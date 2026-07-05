@@ -113,3 +113,35 @@
 **Caveats**
 - Desktop app reads same config.yaml but is a separate binary without GOOSE_FAST_PROVIDER — its fast calls warn + fall back to session provider. Harmless; goes away when desktop is built from fork.
 - Disk still chronic (~6GB free). Full rebuilds remain risky without a permanent 20GB+ cleanup.
+
+## 2026-07-04 — Session 2: spine item 3 fixes + token economy layer (Part 4 start)
+
+**What changed (commits 722f62b67, 0014bfdef)**
+- Tool bridge parity (`goose-provider-types`):
+  - Anthropic format now sends images inside tool results as structured `tool_result` content blocks (previously dropped silently — screenshots from MCP tools never reached the model on zai/anthropic routes).
+  - Anthropic tool calls with non-object arguments become tool errors the model can retry, instead of rmcp's `object()` silently coercing to empty args.
+  - OpenAI streaming: `[DONE]` arriving mid tool-call assembly yields buffered tool calls instead of dropping them (occasionally seen with openai-compat providers like minimax/deepseek).
+- Token economy (`crates/goose/src/budget.rs`, new):
+  - `GOOSE_MAX_SESSION_COST` / `GOOSE_MAX_DAILY_COST` (USD, env or config.yaml). Soft warnings at 50/80/95% (once each per session), hard cap posts a stop message and ends the turn loop. Daily window = local midnight, summed across sessions from the session DB.
+  - Zero cost when unset (two config lookups per turn, no DB query).
+- `/status` now surfaces lifetime **cost** and **cache-read ratio** — cache-hit visibility was a Part 4 deliverable.
+- `/agentsmd` (auto-AGENTS.md, spine item 5 pulled forward): kicks off a structured generation turn; scans build system/commands/layout; never overwrites an existing AGENTS.md/CLAUDE.md (writes `AGENTS.md.proposed` + drift summary).
+
+**Verified**
+- `cargo test -p goose-provider-types --lib` 356 passed; `-p goose --lib` budget + execute_commands tests pass; clippy `-D warnings` clean on both crates.
+- Live (debug fork binary, zai/glm-5.2):
+  - Session hard cap: turn completes, then "🛑 Budget exceeded: session spend $0.0152 has reached the … cap", session paused.
+  - Soft warn: "⚠️ Budget: session spend $0.0050 is over 50% of the $0.01 cap" — renders in non-interactive `goose run` too.
+  - Daily cap: summed real cross-session spend ($0.1574 for the day) and tripped correctly.
+  - `/status` in a session with usage: "Cost (lifetime): $0.0050", "Cache reads: 18944 of 19003 input tokens (100%)" — zai prompt caching confirmed live.
+  - `/agentsmd` in fresh repo: wrote grounded AGENTS.md (commands verified against package.json). Rerun with existing AGENTS.md: audited for drift, wrote nothing, original untouched.
+- Follow-up fix: `/status` on a zero-usage session showed "N/A (no pricing for this model)"; now shows "$0.0000" (N/A reserved for real unpriced usage).
+
+**Caveat**
+- Daily-driver release binary (`~/.local/bin/goose-octocode`) predates all of this — needs a release rebuild (~27 min, ~5GB intermediates; disk currently ~6.5GB free, risky). Features live only in `target/debug/goose` until then.
+
+**Token-cost impact**
+- Budget caps are the first hard ceiling on autonomous spend (Openclaw swarm safety). Cache-read % in /status makes zai prompt-caching savings visible per session.
+
+**Next step**
+- Token economy continuation: per-model budget attribution + cache-hit logging; then plugin/SDK foundation.
